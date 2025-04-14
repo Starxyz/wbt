@@ -1,0 +1,111 @@
+## Visual Studio 临时文件
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## 构建结果
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## Visual Studio 2015/2017 缓存/选项目录
+.vs/
+
+## MSTest 测试结果
+TestResults/
+
+## 构建结果
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+
+## Visual Studio 缓存文件
+*.[Cc]ache
+!*.[Cc]ache/
+
+## Visual Studio 性能分析工具生成的文件
+*.psess
+*.vsp
+*.vspx
+*.sap
+
+## Visual Studio Trace Files
+*.e2e
+
+## ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+## TeamCity
+_TeamCity*
+
+## 可能会包含敏感或高频变化的文件
+*.pubxml
+*.publishproj
+
+## NuGet 包
+*.nupkg
+**/[Pp]ackages/*
+*.nuget.props
+*.nuget.targets
+
+## 其他生成结果
+*.Cache
+ClientBin/
+~$*
+*~
+*.dbmdl
+*.dbproj.schemaview
+*.jfm
+*.pfx
+*.publishsettings
+orleans.codegen.cs
+
+## SQL Server 文件
+*.mdf
+*.ldf
+*.ndf
+
+## Windows Store 应用包目录
+AppPackages/
+BundleArtifacts/
+Package.StoreAssociation.xml
+_pkginfo.txt
+*.appx
+*.appxbundle
+*.appxupload
+
+## 文件系统
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+## 备份和日志
+*.bak
+*.log
+*.vspscc
+*.vssscc
+.builds
+
+## WinForm 设计器文件
+*.resx.bak
