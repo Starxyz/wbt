@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿using System;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Configuration;
@@ -31,8 +31,10 @@ namespace WindowsFormsApp1
             var port = int.Parse(ConfigurationManager.AppSettings["TcpPort"]);
             _tcpServer = new TcpServer(port);
             _tcpServer.LogMessage += OnLogMessage;
-            _tcpServer.ConnectionStatusChanged += OnConnectionStatusChanged;
+            _tcpServer.ServerStatusChanged += OnServerStatusChanged;
+            _tcpServer.ConnectionStatusChanged += OnClientConnectionStatusChanged;
             _tcpServer.MessageReceived += OnMessageReceived;
+            UpdateClientInfo("未连接");
         }
 
         private void OnLogMessage(string message)
@@ -46,29 +48,66 @@ namespace WindowsFormsApp1
             txtLog.AppendText($"{DateTime.Now:HH:mm:ss} {message}\r\n");
         }
 
-        private void OnConnectionStatusChanged(bool connected)
+        private void OnServerStatusChanged(bool started)
         {
-            if (lblTcpStatus.InvokeRequired)
+            if (this.InvokeRequired)
             {
-                lblTcpStatus.Invoke(new Action<bool>(OnConnectionStatusChanged), connected);
+                this.Invoke(new Action<bool>(OnServerStatusChanged), started);
                 return;
             }
 
-            lblTcpStatus.Text = connected ? "TCP: 已连接" : "TCP: 已启动";
+            lblTcpStatus.Text = started ? $"TCP: {_tcpServer.Endpoint}" : "TCP: 未启动";
+            lblServerInfo.Text = started ? $"服务器: {_tcpServer.Endpoint}" : "服务器: 未启动";
         }
+
+        private void OnClientConnectionStatusChanged(bool connected)
+        {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new Action<bool>(OnClientConnectionStatusChanged), connected);
+                return;
+            }
+            
+            if (!connected)
+            {
+                UpdateClientInfo("未连接");
+            }
+        }
+        private void UpdateClientInfo(string clientInfo)
+        {
+            if (lblClientInfo.InvokeRequired)
+            {
+                lblClientInfo.Invoke(new Action<string>(UpdateClientInfo), clientInfo);
+                return;
+            }
+            lblClientInfo.Text = $"客户端: {clientInfo}";
+        }
+
         private void OnMessageReceived(string message)
         {
             try 
             {
-                // Expected format: "品名|规格|斤数|生产日期|二维码"
-                var parts = message.Split('|');
-                if (parts.Length == 5)
+                if (message.StartsWith("CONNECT|"))
                 {
-                    Pint_model(1, parts[0], parts[1], parts[2], parts[3], parts[4]);
+                    var clientInfo = message.Substring(8);
+                    UpdateClientInfo(clientInfo);
+                }
+                else if (message == "DISCONNECT")
+                {
+                    UpdateClientInfo("未连接");
                 }
                 else
                 {
-                    Logger.Warn($"Invalid message format: {message}");
+                    // Expected format: "品名|规格|斤数|生产日期|二维码"
+                    var parts = message.Split('|');
+                    if (parts.Length == 5)
+                    {
+                        Pint_model(1, parts[0], parts[1], parts[2], parts[3], parts[4]);
+                    }
+                    else
+                    {
+                        Logger.Warn($"Invalid message format: {message}");
+                    }
                 }
             }
             catch (Exception ex)

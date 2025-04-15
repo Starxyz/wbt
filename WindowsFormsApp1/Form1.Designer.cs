@@ -33,6 +33,8 @@
             this.txtLog = new System.Windows.Forms.TextBox();
             this.lblTcpStatus = new System.Windows.Forms.Label();
             this.btnTcpControl = new System.Windows.Forms.Button();
+            this.lblServerInfo = new System.Windows.Forms.Label();
+            this.lblClientInfo = new System.Windows.Forms.Label();
             this.SuspendLayout();
             // 
             // btn_print
@@ -60,12 +62,12 @@
             this.txtLog.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
             | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.txtLog.Location = new System.Drawing.Point(12, 70);
+            this.txtLog.Location = new System.Drawing.Point(12, 120);
             this.txtLog.Multiline = true;
             this.txtLog.Name = "txtLog";
             this.txtLog.ReadOnly = true;
             this.txtLog.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
-            this.txtLog.Size = new System.Drawing.Size(260, 179);
+            this.txtLog.Size = new System.Drawing.Size(460, 300);
             this.txtLog.TabIndex = 2;
             // 
             // lblTcpStatus
@@ -76,6 +78,22 @@
             this.lblTcpStatus.Size = new System.Drawing.Size(65, 12);
             this.lblTcpStatus.TabIndex = 3;
             this.lblTcpStatus.Text = "TCP: 未启动";
+            
+            // lblServerInfo
+            this.lblServerInfo.AutoSize = true;
+            this.lblServerInfo.Location = new System.Drawing.Point(12, 70);
+            this.lblServerInfo.Name = "lblServerInfo";
+            this.lblServerInfo.Size = new System.Drawing.Size(77, 12);
+            this.lblServerInfo.TabIndex = 5;
+            this.lblServerInfo.Text = "服务器: 未启动";
+            
+            // lblClientInfo
+            this.lblClientInfo.AutoSize = true;
+            this.lblClientInfo.Location = new System.Drawing.Point(12, 90);
+            this.lblClientInfo.Name = "lblClientInfo";
+            this.lblClientInfo.Size = new System.Drawing.Size(77, 12);
+            this.lblClientInfo.TabIndex = 6;
+            this.lblClientInfo.Text = "客户端: 未连接";
             // 
             // btnTcpControl
             // 
@@ -91,7 +109,9 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(284, 261);
+            this.ClientSize = new System.Drawing.Size(484, 432);
+            this.Controls.Add(this.lblClientInfo);
+            this.Controls.Add(this.lblServerInfo);
             this.Controls.Add(this.btnTcpControl);
             this.Controls.Add(this.lblTcpStatus);
             this.Controls.Add(this.txtLog);
@@ -111,5 +131,7 @@
         private System.Windows.Forms.TextBox txtLog;
         private System.Windows.Forms.Label lblTcpStatus;
         private System.Windows.Forms.Button btnTcpControl;
+        private System.Windows.Forms.Label lblServerInfo;
+        private System.Windows.Forms.Label lblClientInfo;
     }
 }

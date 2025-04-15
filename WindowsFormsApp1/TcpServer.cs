@@ -22,7 +22,8 @@ namespace WindowsFormsApp1
         public string Endpoint => $"{IPAddress}:{Port}";
 
         public event Action<string> LogMessage;
-        public event Action<bool> ConnectionStatusChanged;
+        public event Action<bool> ServerStatusChanged; // For server start/stop
+        public event Action<bool> ConnectionStatusChanged; // For client connect/disconnect
         public event Action<string> MessageReceived;
 
         public TcpServer(int port)
@@ -48,6 +49,7 @@ namespace WindowsFormsApp1
             {
                 _listener.Start();
                 _isRunning = true;
+                ServerStatusChanged?.Invoke(true);
                 LogMessage?.Invoke($"TCP服务已启动，监听地址: {Endpoint}");
                 Logger.Info($"TCP服务已启动，监听地址: {Endpoint}");
 
@@ -81,6 +83,7 @@ namespace WindowsFormsApp1
                 {
                     _isRunning = false;
                     _listener?.Stop();
+                    ServerStatusChanged?.Invoke(false);
                     LogMessage?.Invoke("TCP服务已停止");
                     Logger.Info("TCP服务已停止");
                 }
@@ -89,9 +92,11 @@ namespace WindowsFormsApp1
 
         private async Task HandleClientAsync(TcpClient client)
         {
+            var clientInfo = client.Client.RemoteEndPoint?.ToString() ?? "未知客户端";
             ConnectionStatusChanged?.Invoke(true);
-            LogMessage?.Invoke($"客户端已连接: {client.Client.RemoteEndPoint}");
-            Logger.Info($"客户端已连接: {client.Client.RemoteEndPoint}");
+            LogMessage?.Invoke($"客户端已连接: {clientInfo}");
+            Logger.Info($"客户端已连接: {clientInfo}");
+            MessageReceived?.Invoke($"CONNECT|{clientInfo}");
 
             try
             {
@@ -118,9 +123,10 @@ namespace WindowsFormsApp1
             }
             finally
             {
-                ConnectionStatusChanged?.Invoke(false);
-                LogMessage?.Invoke("客户端已断开");
-                Logger.Info("客户端已断开");
+            ConnectionStatusChanged?.Invoke(false);
+            LogMessage?.Invoke("客户端已断开");
+            Logger.Info("客户端已断开");
+            MessageReceived?.Invoke("DISCONNECT");
             }
         }
 
