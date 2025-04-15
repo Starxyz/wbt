@@ -1,10 +1,12 @@
-﻿﻿﻿using System;
+﻿﻿﻿﻿﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Configuration;
 using System.Data;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -19,11 +21,65 @@ namespace WindowsFormsApp1
         public Engine engine = new Engine();//打印机 引擎
         public LabelFormatDocument format = null;//获取 模板内容
         private string selectedFilePath = null;
+        private TcpServer _tcpServer;
+        private bool _tcpRunning = false;
+
         public Form1()
         {
             InitializeComponent();
+            
+            var port = int.Parse(ConfigurationManager.AppSettings["TcpPort"]);
+            _tcpServer = new TcpServer(port);
+            _tcpServer.LogMessage += OnLogMessage;
+            _tcpServer.ConnectionStatusChanged += OnConnectionStatusChanged;
+            _tcpServer.MessageReceived += OnMessageReceived;
         }
-        public void Pint_model(int printnum)
+
+        private void OnLogMessage(string message)
+        {
+            if (txtLog.InvokeRequired)
+            {
+                txtLog.Invoke(new Action<string>(OnLogMessage), message);
+                return;
+            }
+            
+            txtLog.AppendText($"{DateTime.Now:HH:mm:ss} {message}\r\n");
+        }
+
+        private void OnConnectionStatusChanged(bool connected)
+        {
+            if (lblTcpStatus.InvokeRequired)
+            {
+                lblTcpStatus.Invoke(new Action<bool>(OnConnectionStatusChanged), connected);
+                return;
+            }
+
+            lblTcpStatus.Text = connected ? "TCP: 已连接" : "TCP: 已启动";
+        }
+        private void OnMessageReceived(string message)
+        {
+            try 
+            {
+                // Expected format: "品名|规格|斤数|生产日期|二维码"
+                var parts = message.Split('|');
+                if (parts.Length == 5)
+                {
+                    Pint_model(1, parts[0], parts[1], parts[2], parts[3], parts[4]);
+                }
+                else
+                {
+                    Logger.Warn($"Invalid message format: {message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error processing received message");
+            }
+        }
+
+        public void Pint_model(int printnum, string productName = "46无抗鲜鸡蛋", 
+                             string spec = "360枚", string weight = "12", 
+                             string date = "20250204", string qrCode = "5678")
         {
             Logger.Info($"开始打印，数量: {printnum}");
 
@@ -40,11 +96,11 @@ namespace WindowsFormsApp1
 
                     {
 
-                        format.SubStrings["品名"].Value = "品名：46无抗鲜鸡蛋";
-                        format.SubStrings["规格"].Value = "规格：360枚";
-                        format.SubStrings["斤数"].Value = "斤数：12";
-                        format.SubStrings["生产日期"].Value = "生产日期：20250204";
-                        format.SubStrings["二维码"].Value = "5678";
+                        format.SubStrings["品名"].Value = $"品名：{productName}";
+                        format.SubStrings["规格"].Value = $"规格：{spec}";
+                        format.SubStrings["斤数"].Value = $"斤数：{weight}";
+                        format.SubStrings["生产日期"].Value = $"生产日期：{date}";
+                        format.SubStrings["二维码"].Value = qrCode;
 
 
                     }
@@ -115,5 +171,56 @@ namespace WindowsFormsApp1
             }
         }
 
+        private async void btnTcpControl_Click(object sender, EventArgs e)
+        {
+            btnTcpControl.Enabled = false;
+            
+            if (!_tcpRunning)
+            {
+                try
+                {
+                    await _tcpServer.StartAsync();
+                    _tcpRunning = true;
+                    btnTcpControl.Text = "停止TCP";
+                    lblTcpStatus.Text = $"TCP: {_tcpServer.Endpoint}";
+                }
+                catch (Exception ex)
+                {
+                    _tcpRunning = false;
+                    btnTcpControl.Text = "启动TCP";
+                    lblTcpStatus.Text = "TCP: 未启动";
+                    Logger.Error(ex, "启动TCP服务失败");
+                    MessageBox.Show($"启动TCP服务失败: {ex.Message}", "错误", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            else
+            {
+                try
+                {
+                    _tcpServer.Stop();
+                    _tcpRunning = false;
+                    btnTcpControl.Text = "启动TCP";
+                    lblTcpStatus.Text = "TCP: 未启动";
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "停止TCP服务失败");
+                    MessageBox.Show($"停止TCP服务失败: {ex.Message}", "错误",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            
+            btnTcpControl.Enabled = true;
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (_tcpRunning)
+            {
+                _tcpServer.Stop();
+            }
+            base.OnFormClosing(e);
+        }
     }
 }
