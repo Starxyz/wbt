@@ -35,6 +35,9 @@
             this.btnTcpControl = new System.Windows.Forms.Button();
             this.lblServerInfo = new System.Windows.Forms.Label();
             this.lblClientInfo = new System.Windows.Forms.Label();
+            this.btnModbusControl = new System.Windows.Forms.Button();
+            this.lblWeight = new System.Windows.Forms.Label();
+            this.button1 = new System.Windows.Forms.Button();
             this.SuspendLayout();
             // 
             // btn_print
@@ -75,25 +78,9 @@
             this.lblTcpStatus.AutoSize = true;
             this.lblTcpStatus.Location = new System.Drawing.Point(174, 17);
             this.lblTcpStatus.Name = "lblTcpStatus";
-            this.lblTcpStatus.Size = new System.Drawing.Size(65, 12);
+            this.lblTcpStatus.Size = new System.Drawing.Size(71, 12);
             this.lblTcpStatus.TabIndex = 3;
             this.lblTcpStatus.Text = "TCP: 未启动";
-            
-            // lblServerInfo
-            this.lblServerInfo.AutoSize = true;
-            this.lblServerInfo.Location = new System.Drawing.Point(12, 70);
-            this.lblServerInfo.Name = "lblServerInfo";
-            this.lblServerInfo.Size = new System.Drawing.Size(77, 12);
-            this.lblServerInfo.TabIndex = 5;
-            this.lblServerInfo.Text = "服务器: 未启动";
-            
-            // lblClientInfo
-            this.lblClientInfo.AutoSize = true;
-            this.lblClientInfo.Location = new System.Drawing.Point(12, 90);
-            this.lblClientInfo.Name = "lblClientInfo";
-            this.lblClientInfo.Size = new System.Drawing.Size(77, 12);
-            this.lblClientInfo.TabIndex = 6;
-            this.lblClientInfo.Text = "客户端: 未连接";
             // 
             // btnTcpControl
             // 
@@ -105,11 +92,62 @@
             this.btnTcpControl.UseVisualStyleBackColor = true;
             this.btnTcpControl.Click += new System.EventHandler(this.btnTcpControl_Click);
             // 
+            // lblServerInfo
+            // 
+            this.lblServerInfo.AutoSize = true;
+            this.lblServerInfo.Location = new System.Drawing.Point(12, 70);
+            this.lblServerInfo.Name = "lblServerInfo";
+            this.lblServerInfo.Size = new System.Drawing.Size(89, 12);
+            this.lblServerInfo.TabIndex = 5;
+            this.lblServerInfo.Text = "服务器: 未启动";
+            // 
+            // lblClientInfo
+            // 
+            this.lblClientInfo.AutoSize = true;
+            this.lblClientInfo.Location = new System.Drawing.Point(12, 90);
+            this.lblClientInfo.Name = "lblClientInfo";
+            this.lblClientInfo.Size = new System.Drawing.Size(89, 12);
+            this.lblClientInfo.TabIndex = 6;
+            this.lblClientInfo.Text = "客户端: 未连接";
+            // 
+            // btnModbusControl
+            // 
+            this.btnModbusControl.Location = new System.Drawing.Point(93, 41);
+            this.btnModbusControl.Name = "btnModbusControl";
+            this.btnModbusControl.Size = new System.Drawing.Size(75, 23);
+            this.btnModbusControl.TabIndex = 7;
+            this.btnModbusControl.Text = "连接重量";
+            this.btnModbusControl.UseVisualStyleBackColor = true;
+            this.btnModbusControl.Click += new System.EventHandler(this.btnModbusControl_Click_1);
+            // 
+            // lblWeight
+            // 
+            this.lblWeight.AutoSize = true;
+            this.lblWeight.Font = new System.Drawing.Font("Microsoft Sans Serif", 14F, System.Drawing.FontStyle.Bold);
+            this.lblWeight.Location = new System.Drawing.Point(323, 90);
+            this.lblWeight.Name = "lblWeight";
+            this.lblWeight.Size = new System.Drawing.Size(95, 24);
+            this.lblWeight.TabIndex = 9;
+            this.lblWeight.Text = "重量: 0kg";
+            // 
+            // button1
+            // 
+            this.button1.Location = new System.Drawing.Point(315, 11);
+            this.button1.Name = "button1";
+            this.button1.Size = new System.Drawing.Size(75, 23);
+            this.button1.TabIndex = 10;
+            this.button1.Text = "button1";
+            this.button1.UseVisualStyleBackColor = true;
+            this.button1.Click += new System.EventHandler(this.button1_Click_1);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(484, 432);
+            this.Controls.Add(this.button1);
+            this.Controls.Add(this.lblWeight);
+            this.Controls.Add(this.btnModbusControl);
             this.Controls.Add(this.lblClientInfo);
             this.Controls.Add(this.lblServerInfo);
             this.Controls.Add(this.btnTcpControl);
@@ -133,5 +171,8 @@
         private System.Windows.Forms.Button btnTcpControl;
         private System.Windows.Forms.Label lblServerInfo;
         private System.Windows.Forms.Label lblClientInfo;
+        private System.Windows.Forms.Button btnModbusControl;
+        private System.Windows.Forms.Label lblWeight;
+        private System.Windows.Forms.Button button1;
     }
 }
