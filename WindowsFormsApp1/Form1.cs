@@ -35,6 +35,7 @@ namespace WindowsFormsApp1
         private const int MAX_RECONNECT_ATTEMPTS = 5;
         private const int KEEPALIVE_INTERVAL = 30000; // 30 秒检查一次
 
+        private DateTime factoryStartDate;
         public Form1()
         {
             InitializeComponent();
@@ -56,6 +57,8 @@ namespace WindowsFormsApp1
             _modbusKeepAliveTimer = new System.Windows.Forms.Timer();
             _modbusKeepAliveTimer.Interval = KEEPALIVE_INTERVAL;
             _modbusKeepAliveTimer.Tick += ModbusKeepAlive_Tick;
+
+            factoryStartDate = DateTime.Parse("2022-01-01");
         }
 
         // Modbus 连接保持检查方法
@@ -300,6 +303,7 @@ namespace WindowsFormsApp1
                     {
                         Logger.Warn($"Invalid message format: {message}");
                         var weight = GetWeightFunction();
+                        var traceabilityCode = GenerateTraceabilityCode();
                         if (parts[0] == "xmywkfxxjd")
                         {
                             Pint_model(1, "香满园无抗富硒鲜鸡蛋", "30枚盒10盒", weight, "8879");
@@ -584,7 +588,7 @@ namespace WindowsFormsApp1
         private void button1_Click_1(object sender, EventArgs e)
         {
             GetWeightFunction();
-            var res = GenerateTraceabilityCode(DateTime.Parse("2022-01-01"));
+            var res = GenerateTraceabilityCode();
             OnLogMessage(res);
         }
 
@@ -617,7 +621,7 @@ namespace WindowsFormsApp1
             btnModbusControl.Enabled = true;
         }
 
-        public string GenerateTraceabilityCode(DateTime factoryStartDate)
+        public string GenerateTraceabilityCode()
         {
             // Get current date
             DateTime currentDate = DateTime.Now;
