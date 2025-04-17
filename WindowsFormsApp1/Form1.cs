@@ -306,7 +306,7 @@ namespace WindowsFormsApp1
                         var traceabilityCode = GenerateTraceabilityCode();
                         if (parts[0] == "xmywkfxxjd")
                         {
-                            Pint_model(1, "香满园无抗富硒鲜鸡蛋", "30枚盒10盒", weight, "8879");
+                            Pint_model(1, "香满园无抗富硒鲜鸡蛋", "30枚盒10盒", weight, traceabilityCode, "8879");
                         }
                     }
                 }
