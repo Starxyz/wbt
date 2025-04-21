@@ -13,6 +13,7 @@ using System.Windows.Forms;
 using Seagull.BarTender.Print;
 using NLog;
 using EasyModbus;
+using Newtonsoft.Json;
 
 namespace WindowsFormsApp1
 {
@@ -33,9 +34,11 @@ namespace WindowsFormsApp1
         private DateTime _lastModbusActivity = DateTime.MinValue;
         private int _reconnectAttempts = 0;
         private const int MAX_RECONNECT_ATTEMPTS = 5;
-        private const int KEEPALIVE_INTERVAL = 30000; // 30 秒检查一次
+        private const int KEEPALIVE_INTERVAL = 3000; // 3 秒检查一次
 
         private DateTime factoryStartDate;
+
+        private List<PrintTemplate> _templates = new List<PrintTemplate>();
         public Form1()
         {
             InitializeComponent();
@@ -59,7 +62,132 @@ namespace WindowsFormsApp1
             _modbusKeepAliveTimer.Tick += ModbusKeepAlive_Tick;
 
             factoryStartDate = DateTime.Parse("2022-01-01");
+
+            LoadTemplates(); // 加载分类模板信息
+
+            // 使用Timer在UI初始化完成后执行自动启动操作
+            System.Windows.Forms.Timer startupTimer = new System.Windows.Forms.Timer();
+            startupTimer.Interval = 500; // 500毫秒后执行，确保UI已完全加载
+            startupTimer.Tick += StartupTimer_Tick;
+            startupTimer.Start();
         }
+
+        private async void StartupTimer_Tick(object sender, EventArgs e)
+        {
+            // 停止定时器，防止重复执行
+            ((System.Windows.Forms.Timer)sender).Stop();
+
+            // 执行自动启动操作（并行执行以提高效率）
+            var tasks = new List<Task>
+            {
+                AutoStartTcpServerAsync(),
+                AutoConnectModbusAsync(),
+                AutoLoadDefaultTemplateAsync()
+            };
+
+            // 等待所有任务完成
+            await Task.WhenAll(tasks);
+
+            OnLogMessage("所有自动启动任务已完成");
+        }
+
+        // 自动启动TCP服务器
+        private async Task AutoStartTcpServerAsync()
+        {
+            if (!_tcpRunning)
+            {
+                btnTcpControl.Enabled = false;
+                await ToggleTcpServerAsync(true);
+                btnTcpControl.Enabled = true;
+            }
+        }
+
+
+        // 自动连接Modbus
+        private async Task AutoConnectModbusAsync()
+        {
+            try
+            {
+                await ConnectModbusAsync();
+                btnModbusControl.Text = "断开Modbus";
+                OnLogMessage("Modbus已自动连接");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "自动连接Modbus失败");
+                OnLogMessage($"自动连接Modbus失败: {ex.Message}");
+            }
+        }
+
+        // 异步加载默认打印模板
+        private async Task AutoLoadDefaultTemplateAsync()
+        {
+            try
+            {
+                // 从配置文件获取默认打印模板路径
+                string configTemplatePath = Application.StartupPath + "\\" + ConfigurationManager.AppSettings["DefaultTemplatePath"];
+                string defaultTemplatePath = !string.IsNullOrEmpty(configTemplatePath)
+                    ? configTemplatePath
+                    : Path.Combine(Application.StartupPath, "default.btw");
+
+                if (File.Exists(defaultTemplatePath))
+                {
+                    OnLogMessage($"开始加载默认模板: {defaultTemplatePath}");
+
+                    // 使用Task.Run将耗时操作放入后台线程
+                    await Task.Run(() => {
+                        try
+                        {
+                            if (!engine.IsAlive)
+                                engine.Start();
+
+                            format = engine.Documents.Open(defaultTemplatePath);
+                            _templateOpened = true;
+                            selectedFilePath = defaultTemplatePath;
+                        }
+                        catch (Exception ex)
+                        {
+                            throw ex; // 重新抛出异常以便在外层捕获
+                        }
+                    });
+
+                    OnLogMessage($"默认模板已成功加载: {defaultTemplatePath}");
+                }
+                else
+                {
+                    Logger.Warn("默认模板文件不存在: " + defaultTemplatePath);
+                    OnLogMessage("默认模板文件不存在: " + defaultTemplatePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "自动加载默认模板失败");
+                OnLogMessage($"自动加载默认模板失败: {ex.Message}");
+            }
+        }
+
+        private void LoadTemplates()
+        {
+            try
+            {
+                string json = File.ReadAllText("templates.json", Encoding.UTF8);
+                _templates = JsonConvert.DeserializeObject<List<PrintTemplate>>(json);
+                Logger.Info($"模板文件加载成功，共{_templates.Count}个模板");
+                OnLogMessage("模板文件加载成功，共" + _templates.Count + "个模板");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "加载模板文件失败");
+                MessageBox.Show("加载模板文件失败：" + ex.Message);
+                OnLogMessage("加载模板文件失败：" + ex.Message);
+            }
+        }
+
+        private PrintTemplate FindTemplateByKey(string key)
+        {
+            return _templates.FirstOrDefault(t => t.key == key);
+        }
+
 
         // Modbus 连接保持检查方法
         private void ModbusKeepAlive_Tick(object sender, EventArgs e)
@@ -109,6 +237,7 @@ namespace WindowsFormsApp1
                 Logger.Error($"在 {MAX_RECONNECT_ATTEMPTS} 次尝试后无法重新连接到 Modbus");
                 _modbusKeepAliveTimer.Stop();
                 UpdateWeightDisplay("--.-"); // 显示连接断开
+
 
                 // 更新 UI 以反映断开状态
                 if (_modbusConnected)
@@ -259,7 +388,7 @@ namespace WindowsFormsApp1
 
                 // 获取原始寄存器值
                 int rawValue = result[0]; // 例如 1820
-                string formattedValue = (rawValue / 100.0).ToString("F2"); // "18.20"
+                string formattedValue = (rawValue / 1000.0).ToString("F2"); // "18.20"
 
                 // 更新显示
                 UpdateWeightDisplay(formattedValue);
@@ -282,38 +411,40 @@ namespace WindowsFormsApp1
         {
             try
             {
-                if (message.StartsWith("CONNECT|"))
-                {
-                    var clientInfo = message.Substring(8);
-                    UpdateClientInfo(clientInfo);
-                }
-                else if (message == "DISCONNECT")
-                {
-                    UpdateClientInfo("未连接");
-                }
-                else
-                {
-                    // Expected format: "品名|规格|斤数|生产日期|二维码"
-                    var parts = message.Split('|');
-                    if (parts.Length == 5)
-                    {
-                        Pint_model(1, parts[0], parts[1], parts[2], parts[3], parts[4]);
-                    }
-                    else
-                    {
-                        Logger.Warn($"Invalid message format: {message}");
-                        var weight = GetWeightFunction();
-                        var traceabilityCode = GenerateTraceabilityCode();
-                        if (parts[0] == "xmywkfxxjd")
-                        {
-                            Pint_model(1, "香满园无抗富硒鲜鸡蛋", "30枚盒10盒", weight, traceabilityCode, "8879");
-                        }
-                    }
-                }
+                if (string.IsNullOrWhiteSpace(message)) return;
+
+                // 用 char[] + count + options 的重载
+                var parts = message.Split(new[] { '|' }, 2, StringSplitOptions.None);
+                var key = parts[0];
+                var slot = (parts.Length > 1) ? parts[1] : null;
+
+                PrintTemplate(string.IsNullOrWhiteSpace(slot) ? key : $"{key}-{slot}");
             }
             catch (Exception ex)
             {
                 Logger.Error(ex, "Error processing received message");
+            }
+        }
+
+
+
+        private void PrintTemplate(string key)
+        {
+            var tpl = FindTemplateByKey(key);
+            if (tpl != null)
+            {
+
+                string weight = GetWeightFunction();
+                string traceabilityCode = GenerateTraceabilityCode();
+                Pint_model(1, tpl.productName, tpl.spec, weight, traceabilityCode, tpl.qrcode);
+            }
+            else
+            {
+                string weight = GetWeightFunction();
+                string traceabilityCode = GenerateTraceabilityCode();
+                Logger.Warn($"未找到模板: {key}");
+                OnLogMessage($"未找到模板: {key}");
+                //MessageBox.Show($"未找到模板: {key}", "模板错误", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
@@ -348,8 +479,8 @@ namespace WindowsFormsApp1
                         // 设置打印数据
                         format.SubStrings["品名"].Value = $"品名：{productName}";
                         format.SubStrings["规格"].Value = $"规格：{spec}";
-                        format.SubStrings["斤数"].Value = $"斤数：{weight} kg";
-                        format.SubStrings["生产日期"].Value = " ";//$"生产日期：{date}";
+                        format.SubStrings["斤数"].Value = $"{weight} ";
+                        format.SubStrings["生产日期"].Value = $"{date}";//$"生产日期：{date}";
                         format.SubStrings["二维码"].Value = qrCode;
 
                         // 执行打印
@@ -470,45 +601,90 @@ namespace WindowsFormsApp1
             _templateOpened = false;
         }
 
+        // 公共函数：处理TCP服务器启动/停止
+        private async Task<bool> ToggleTcpServerAsync(bool startServer)
+        {
+            try
+            {
+                if (startServer)
+                {
+                    await _tcpServer.StartAsync();
+                    _tcpRunning = true;
+
+                    // 使用Invoke确保UI更新在UI线程上执行
+                    if (btnTcpControl.InvokeRequired)
+                    {
+                        btnTcpControl.Invoke(new Action(() => {
+                            btnTcpControl.Text = "停止TCP";
+                            lblTcpStatus.Text = $"TCP: {_tcpServer.Endpoint}";
+                        }));
+                    }
+                    else
+                    {
+                        btnTcpControl.Text = "停止TCP";
+                        lblTcpStatus.Text = $"TCP: {_tcpServer.Endpoint}";
+                    }
+
+                    OnLogMessage("TCP服务器已启动");
+                }
+                else
+                {
+                    _tcpServer.Stop();
+                    _tcpRunning = false;
+
+                    // 使用Invoke确保UI更新在UI线程上执行
+                    if (btnTcpControl.InvokeRequired)
+                    {
+                        btnTcpControl.Invoke(new Action(() => {
+                            btnTcpControl.Text = "启动TCP";
+                            lblTcpStatus.Text = "TCP: 未启动";
+                        }));
+                    }
+                    else
+                    {
+                        btnTcpControl.Text = "启动TCP";
+                        lblTcpStatus.Text = "TCP: 未启动";
+                    }
+
+                    OnLogMessage("TCP服务器已停止");
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                string operation = startServer ? "启动" : "停止";
+                Logger.Error(ex, $"{operation}TCP服务失败");
+                OnLogMessage($"{operation}TCP服务失败: {ex.Message}");
+
+                // 如果操作失败，确保UI状态与实际状态一致
+                if (startServer)
+                {
+                    _tcpRunning = false;
+
+                    // 使用Invoke确保UI更新在UI线程上执行
+                    if (btnTcpControl.InvokeRequired)
+                    {
+                        btnTcpControl.Invoke(new Action(() => {
+                            btnTcpControl.Text = "启动TCP";
+                            lblTcpStatus.Text = "TCP: 未启动";
+                        }));
+                    }
+                    else
+                    {
+                        btnTcpControl.Text = "启动TCP";
+                        lblTcpStatus.Text = "TCP: 未启动";
+                    }
+                }
+
+                return false;
+            }
+        }
+
         private async void btnTcpControl_Click(object sender, EventArgs e)
         {
             btnTcpControl.Enabled = false;
 
-            if (!_tcpRunning)
-            {
-                try
-                {
-                    await _tcpServer.StartAsync();
-                    _tcpRunning = true;
-                    btnTcpControl.Text = "停止TCP";
-                    lblTcpStatus.Text = $"TCP: {_tcpServer.Endpoint}";
-                }
-                catch (Exception ex)
-                {
-                    _tcpRunning = false;
-                    btnTcpControl.Text = "启动TCP";
-                    lblTcpStatus.Text = "TCP: 未启动";
-                    Logger.Error(ex, "启动TCP服务失败");
-                    MessageBox.Show($"启动TCP服务失败: {ex.Message}", "错误",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
-            else
-            {
-                try
-                {
-                    _tcpServer.Stop();
-                    _tcpRunning = false;
-                    btnTcpControl.Text = "启动TCP";
-                    lblTcpStatus.Text = "TCP: 未启动";
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex, "停止TCP服务失败");
-                    MessageBox.Show($"停止TCP服务失败: {ex.Message}", "错误",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
+            await ToggleTcpServerAsync(!_tcpRunning);
 
             btnTcpControl.Enabled = true;
         }
@@ -592,7 +768,7 @@ namespace WindowsFormsApp1
             OnLogMessage(res);
         }
 
-       
+
 
         private void btnModbusControl_Click_1(object sender, EventArgs e)
         {
@@ -610,15 +786,17 @@ namespace WindowsFormsApp1
                     Logger.Error(ex, "Modbus连接失败");
                     MessageBox.Show($"Modbus连接失败: {ex.Message}", "错误",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
+
                 }
             }
             else
             {
                 DisconnectModbus();
                 btnModbusControl.Text = "连接Modbus";
-            }
 
+            }
             btnModbusControl.Enabled = true;
+
         }
 
         public string GenerateTraceabilityCode()
@@ -663,5 +841,13 @@ namespace WindowsFormsApp1
 
             return traceabilityCode;
         }
+    }
+
+    public class PrintTemplate
+    {
+        public string key { get; set; }
+        public string productName { get; set; }
+        public string spec { get; set; }
+        public string qrcode { get; set; }
     }
 }
