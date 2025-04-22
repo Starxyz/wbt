@@ -413,12 +413,53 @@ namespace WindowsFormsApp1
             {
                 if (string.IsNullOrWhiteSpace(message)) return;
 
-                // 用 char[] + count + options 的重载
-                var parts = message.Split(new[] { '|' }, 2, StringSplitOptions.None);
-                var key = parts[0];
-                var slot = (parts.Length > 1) ? parts[1] : null;
+                // key | slot | flag
+                var parts = message.Split(new[] { '|' }, 4, StringSplitOptions.None);
 
-                PrintTemplate(string.IsNullOrWhiteSpace(slot) ? key : $"{key}-{slot}");
+                string key = parts[0];
+                string slot = (parts.Length > 1) ? parts[1] : null;
+                string flag = (parts.Length > 2) ? parts[2] : "0";   // 默认 0 = 打印
+                string status = (parts.Length > 3) ? parts[3] : "0";   // 默认 0 = 打印
+
+                if (status == "0") return;
+                // ① flag == 1 → 不打印
+                if (flag == "1") return;
+
+                // ② slot 是否有效
+                bool hasSlot = !string.IsNullOrWhiteSpace(slot) &&
+                               !slot.Equals("null", StringComparison.OrdinalIgnoreCase);
+
+                // ③ xmyjpxjd360 + slot 无效 → 不打印
+                if (key.Equals("xmyjpxjd360", StringComparison.OrdinalIgnoreCase) && !hasSlot)
+                    return;
+
+                string templateKey = hasSlot ? $"{key}-{slot}" : key;
+
+                // ④ 取得重量，只调用一次
+                string weightStr = GetWeightFunction().Trim();
+                string qrOverride = null;        // 默认不改二维码
+
+                // ⑤ 如为 xmyjpxjd360 → 区间 + 二维码校验
+                if (key.Equals("xmyjpxjd360", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!double.TryParse(weightStr.Replace(',', '.'),
+                                         System.Globalization.NumberStyles.Any,
+                                         System.Globalization.CultureInfo.InvariantCulture,
+                                         out double w))
+                    {
+                        Logger.Warn($"无法解析重量: {weightStr}");
+                        return;
+                    }
+
+                    if (w >= 20.5 && w <= 21.1) { qrOverride = "1790"; }
+                    else if (w >= 22.0 && w <= 22.4) { qrOverride = "1791"; }
+                    else if (w >= 23.9 && w <= 24.1) { qrOverride = "1792"; }
+                    else if (w >= 15.8 && w <= 16.6) { qrOverride = "1793"; }
+                    else { return; }                // 不在三段区间 → 不打印
+                }
+
+                // ⑥ 打印
+                PrintTemplate(templateKey, weightStr, qrOverride);
             }
             catch (Exception ex)
             {
@@ -428,25 +469,31 @@ namespace WindowsFormsApp1
 
 
 
-        private void PrintTemplate(string key)
+
+
+        private void PrintTemplate(string key, string weight, string overrideQrCode = null)
         {
             var tpl = FindTemplateByKey(key);
             if (tpl != null)
             {
-
-                string weight = GetWeightFunction();
                 string traceabilityCode = GenerateTraceabilityCode();
-                Pint_model(1, tpl.productName, tpl.spec, weight, traceabilityCode, tpl.qrcode);
+                string qrCodeToUse = overrideQrCode ?? tpl.qrcode;
+
+                Pint_model(1,
+                           tpl.productName,
+                           tpl.spec,
+                           weight,
+                           traceabilityCode,
+                           qrCodeToUse);
             }
             else
             {
-                string weight = GetWeightFunction();
-                string traceabilityCode = GenerateTraceabilityCode();
                 Logger.Warn($"未找到模板: {key}");
                 OnLogMessage($"未找到模板: {key}");
-                //MessageBox.Show($"未找到模板: {key}", "模板错误", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
+
+
 
         public void Pint_model(int printnum, string productName = "46无抗鲜鸡蛋",
                              string spec = "360枚", string weight = "12",
