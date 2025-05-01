@@ -1,0 +1,294 @@
+[
+  {
+    "Id": 1,
+    "Version": "xhxy",
+    "ProductName": "元初蛋捐相粮鲜鸡蛋",
+    "Specification": "30枚/盒+10盒",
+    "ChickenHouse": "1-1",
+    "CustomerName": "ESP",
+    "WeightLowerLimit": 16.8,
+    "WeightUpperLimit": 17.4,
+    "RejectPrint": false,
+    "QRCode": "XMY001",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 2,
+    "Version": "xhxy",
+    "ProductName": "元初蛋捐相粮鲜鸡蛋",
+    "Specification": "30枚/盒+10盒",
+    "ChickenHouse": "1-1",
+    "CustomerName": "XMY",
+    "WeightLowerLimit": 16.8,
+    "WeightUpperLimit": 17.8,
+    "RejectPrint": false,
+    "QRCode": "XMY002",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 3,
+    "Version": "xmyjpxjd360",
+    "ProductName": "特殊处理产品A",
+    "Specification": "360枚/箱",
+    "ChickenHouse": "2-1",
+    "CustomerName": null,
+    "WeightLowerLimit": 15.0,
+    "WeightUpperLimit": 25.0,
+    "RejectPrint": false,
+    "QRCode": "默认二维码",
+    "EnableSpecialRules": true,
+    "SpecialRules": [
+      {
+        "ChickenHouse": "2-1",
+        "WeightLowerLimit": 20.5,
+        "WeightUpperLimit": 21.1,
+        "QRCode": "1790"
+      },
+      {
+        "ChickenHouse": "2-1",
+        "WeightLowerLimit": 22.0,
+        "WeightUpperLimit": 22.4,
+        "QRCode": "1791"
+      },
+      {
+        "ChickenHouse": "2-1",
+        "WeightLowerLimit": 23.9,
+        "WeightUpperLimit": 24.1,
+        "QRCode": "1792"
+      },
+      {
+        "ChickenHouse": "2-1",
+        "WeightLowerLimit": 15.8,
+        "WeightUpperLimit": 16.6,
+        "QRCode": "1793"
+      }
+    ]
+  },
+  {
+    "Id": 4,
+    "Version": "xmyjpxjd360",
+    "ProductName": "特殊处理产品B",
+    "Specification": "360枚/箱",
+    "ChickenHouse": "3-1",
+    "CustomerName": null,
+    "WeightLowerLimit": 15.0,
+    "WeightUpperLimit": 25.0,
+    "RejectPrint": false,
+    "QRCode": "默认二维码B",
+    "EnableSpecialRules": true,
+    "SpecialRules": [
+      {
+        "ChickenHouse": "3-1",
+        "WeightLowerLimit": 19.5,
+        "WeightUpperLimit": 20.1,
+        "QRCode": "2790"
+      },
+      {
+        "ChickenHouse": "3-1",
+        "WeightLowerLimit": 21.0,
+        "WeightUpperLimit": 21.4,
+        "QRCode": "2791"
+      },
+      {
+        "ChickenHouse": "3-1",
+        "WeightLowerLimit": 22.9,
+        "WeightUpperLimit": 23.1,
+        "QRCode": "2792"
+      }
+    ]
+  },
+  {
+    "Id": 5,
+    "Version": "ycjd",
+    "ProductName": "元初鲜鸡蛋",
+    "Specification": "30枚/盒",
+    "ChickenHouse": null,
+    "CustomerName": null,
+    "WeightLowerLimit": 16.0,
+    "WeightUpperLimit": 18.0,
+    "RejectPrint": false,
+    "QRCode": "YC001",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 6,
+    "Version": "ycjd",
+    "ProductName": "元初鲜鸡蛋-特级",
+    "Specification": "30枚/盒",
+    "ChickenHouse": null,
+    "CustomerName": null,
+    "WeightLowerLimit": 18.1,
+    "WeightUpperLimit": 20.0,
+    "RejectPrint": false,
+    "QRCode": "YC002",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 7,
+    "Version": "ycjd",
+    "ProductName": "元初鲜鸡蛋-轻量",
+    "Specification": "30枚/盒",
+    "ChickenHouse": null,
+    "CustomerName": null,
+    "WeightLowerLimit": 14.0,
+    "WeightUpperLimit": 15.9,
+    "RejectPrint": false,
+    "QRCode": "YC003",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 8,
+    "Version": "ycjd",
+    "ProductName": "元初鲜鸡蛋-超重",
+    "Specification": "30枚/盒",
+    "ChickenHouse": null,
+    "CustomerName": null,
+    "WeightLowerLimit": 20.1,
+    "WeightUpperLimit": 22.0,
+    "RejectPrint": false,
+    "QRCode": "YC004",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 9,
+    "Version": "ycjd",
+    "ProductName": "元初鲜鸡蛋-不合格",
+    "Specification": "30枚/盒",
+    "ChickenHouse": null,
+    "CustomerName": null,
+    "WeightLowerLimit": 22.1,
+    "WeightUpperLimit": 30.0,
+    "RejectPrint": true,
+    "QRCode": "YC999",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 10,
+    "Version": "xmyjpxjd",
+    "ProductName": "相粮鲜鸡蛋",
+    "Specification": "30枚/盒+6盒",
+    "ChickenHouse": "1-2",
+    "CustomerName": "客户A",
+    "WeightLowerLimit": 16.5,
+    "WeightUpperLimit": 17.5,
+    "RejectPrint": false,
+    "QRCode": "XL001",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 11,
+    "Version": "xmyjpxjd",
+    "ProductName": "相粮鲜鸡蛋",
+    "Specification": "30枚/盒+6盒",
+    "ChickenHouse": "1-3",
+    "CustomerName": "客户B",
+    "WeightLowerLimit": 16.5,
+    "WeightUpperLimit": 17.5,
+    "RejectPrint": false,
+    "QRCode": "XL002",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 12,
+    "Version": "xmyjpxjd",
+    "ProductName": "相粮鲜鸡蛋-特供",
+    "Specification": "30枚/盒+6盒",
+    "ChickenHouse": "1-4",
+    "CustomerName": "客户C",
+    "WeightLowerLimit": 17.6,
+    "WeightUpperLimit": 18.5,
+    "RejectPrint": false,
+    "QRCode": "XL003",
+    "EnableSpecialRules": true,
+    "SpecialRules": [
+      {
+        "ChickenHouse": "1-4",
+        "WeightLowerLimit": 17.6,
+        "WeightUpperLimit": 18.0,
+        "QRCode": "XL003A"
+      },
+      {
+        "ChickenHouse": "1-4",
+        "WeightLowerLimit": 18.1,
+        "WeightUpperLimit": 18.5,
+        "QRCode": "XL003B"
+      }
+    ]
+  },
+  {
+    "Id": 13,
+    "Version": "wkxjd",
+    "ProductName": "无抗鲜鸡蛋",
+    "Specification": "30枚/盒+12盒",
+    "ChickenHouse": null,
+    "CustomerName": null,
+    "WeightLowerLimit": 15.0,
+    "WeightUpperLimit": 19.0,
+    "RejectPrint": false,
+    "QRCode": "WK001",
+    "EnableSpecialRules": true,
+    "SpecialRules": [
+      {
+        "ChickenHouse": null,
+        "WeightLowerLimit": 15.0,
+        "WeightUpperLimit": 16.0,
+        "QRCode": "WK001A"
+      },
+      {
+        "ChickenHouse": null,
+        "WeightLowerLimit": 16.1,
+        "WeightUpperLimit": 17.0,
+        "QRCode": "WK001B"
+      },
+      {
+        "ChickenHouse": null,
+        "WeightLowerLimit": 17.1,
+        "WeightUpperLimit": 18.0,
+        "QRCode": "WK001C"
+      },
+      {
+        "ChickenHouse": null,
+        "WeightLowerLimit": 18.1,
+        "WeightUpperLimit": 19.0,
+        "QRCode": "WK001D"
+      }
+    ]
+  },
+  {
+    "Id": 14,
+    "Version": "wkxjd",
+    "ProductName": "无抗鲜鸡蛋-特级",
+    "Specification": "30枚/盒+12盒",
+    "ChickenHouse": "5-1",
+    "CustomerName": "VIP客户",
+    "WeightLowerLimit": 19.1,
+    "WeightUpperLimit": 21.0,
+    "RejectPrint": false,
+    "QRCode": "WK002",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 15,
+    "Version": "wkxjd",
+    "ProductName": "无抗鲜鸡蛋-轻量",
+    "Specification": "30枚/盒+12盒",
+    "ChickenHouse": null,
+    "CustomerName": null,
+    "WeightLowerLimit": 13.0,
+    "WeightUpperLimit": 14.9,
+    "RejectPrint": false,
+    "QRCode": "WK003",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  }
+]

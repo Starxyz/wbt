@@ -1,0 +1,69 @@
+[
+  {
+    "Id": 1,
+    "Version": "xhxy",
+    "ProductName": "元初蛋捐相粮鲜鸡蛋",
+    "Specification": "30枚/盒+10盒",
+    "ChickenHouse": "1-1",
+    "CustomerName": "ESP",
+    "WeightLowerLimit": 16.8,
+    "WeightUpperLimit": 17.4,
+    "RejectPrint": false,
+    "QRCode": "XMY",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 2,
+    "Version": "xhxy",
+    "ProductName": "元初蛋捐相粮鲜鸡蛋",
+    "Specification": "30枚/盒+10盒",
+    "ChickenHouse": "1-1",
+    "CustomerName": "XMY",
+    "WeightLowerLimit": 16.8,
+    "WeightUpperLimit": 17.8,
+    "RejectPrint": false,
+    "QRCode": "XMY",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 3,
+    "Version": "xmyjpxjd360",
+    "ProductName": "特殊处理产品",
+    "Specification": "规格信息",
+    "ChickenHouse": "2-1",
+    "CustomerName": null,
+    "WeightLowerLimit": 15.0,
+    "WeightUpperLimit": 25.0,
+    "RejectPrint": false,
+    "QRCode": "默认二维码",
+    "EnableSpecialRules": true,
+    "SpecialRules": [
+      {
+        "ChickenHouse": "2-1",
+        "WeightLowerLimit": 20.5,
+        "WeightUpperLimit": 21.1,
+        "QRCode": "1790"
+      },
+      {
+        "ChickenHouse": "2-1",
+        "WeightLowerLimit": 22.0,
+        "WeightUpperLimit": 22.4,
+        "QRCode": "1791"
+      },
+      {
+        "ChickenHouse": "2-1",
+        "WeightLowerLimit": 23.9,
+        "WeightUpperLimit": 24.1,
+        "QRCode": "1792"
+      },
+      {
+        "ChickenHouse": "2-1",
+        "WeightLowerLimit": 15.8,
+        "WeightUpperLimit": 16.6,
+        "QRCode": "1793"
+      }
+    ]
+  }
+]

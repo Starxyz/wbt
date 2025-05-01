@@ -1,0 +1,655 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using NLog;
+
+namespace WindowsFormsApp1
+{
+    public partial class ProductRuleForm : Form
+    {
+        private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+        private ProductRuleManager _ruleManager;
+        private ProductRule _currentRule;
+        private BindingList<ProductRule> _ruleBindingList;
+        private BindingList<SpecialRuleCondition> _specialRuleBindingList;
+
+        public ProductRuleForm()
+        {
+            InitializeComponent();
+            _ruleManager = new ProductRuleManager();
+            LoadRules();
+            SetupDataGridViews();
+        }
+
+        private void LoadRules()
+        {
+            var rules = _ruleManager.GetAllRules();
+            _ruleBindingList = new BindingList<ProductRule>(rules);
+            dgvRules.DataSource = _ruleBindingList;
+        }
+
+        private void SetupDataGridViews()
+        {
+            // 设置主规则表格
+            dgvRules.AutoGenerateColumns = false;
+            dgvRules.Columns.Clear();
+            dgvRules.EditMode = DataGridViewEditMode.EditOnEnter;
+
+            dgvRules.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "Id",
+                HeaderText = "序号",
+                Width = 50
+            });
+
+            dgvRules.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "Version",
+                HeaderText = "版面",
+                Width = 100
+            });
+
+            dgvRules.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "ProductName",
+                HeaderText = "品名",
+                Width = 150
+            });
+
+            dgvRules.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "Specification",
+                HeaderText = "规格",
+                Width = 150
+            });
+
+            dgvRules.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "ChickenHouse",
+                HeaderText = "鸡舍号",
+                Width = 80
+            });
+
+            dgvRules.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "CustomerName",
+                HeaderText = "客户名",
+                Width = 100
+            });
+
+            dgvRules.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "WeightLowerLimit",
+                HeaderText = "重量下限",
+                Width = 80
+            });
+
+            dgvRules.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "WeightUpperLimit",
+                HeaderText = "重量上限",
+                Width = 80
+            });
+
+            var rejectPrintColumn = new DataGridViewCheckBoxColumn
+            {
+                DataPropertyName = "RejectPrint",
+                HeaderText = "拒绝打印",
+                Width = 80,
+                ReadOnly = false
+            };
+            dgvRules.Columns.Add(rejectPrintColumn);
+
+            dgvRules.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "QRCode",
+                HeaderText = "二维码",
+                Width = 100
+            });
+
+            var enableSpecialRulesColumn = new DataGridViewCheckBoxColumn
+            {
+                DataPropertyName = "EnableSpecialRules",
+                HeaderText = "启用特殊规则",
+                Width = 100,
+                ReadOnly = false
+            };
+            dgvRules.Columns.Add(enableSpecialRulesColumn);
+
+            // 设置特殊规则表格
+            dgvSpecialRules.AutoGenerateColumns = false;
+            dgvSpecialRules.Columns.Clear();
+
+            dgvSpecialRules.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "ChickenHouse",
+                HeaderText = "鸡舍号",
+                Width = 80
+            });
+
+            dgvSpecialRules.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "WeightLowerLimit",
+                HeaderText = "重量下限",
+                Width = 80
+            });
+
+            dgvSpecialRules.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "WeightUpperLimit",
+                HeaderText = "重量上限",
+                Width = 80
+            });
+
+            dgvSpecialRules.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = "QRCode",
+                HeaderText = "二维码",
+                Width = 100
+            });
+
+            var specialRejectPrintColumn = new DataGridViewCheckBoxColumn
+            {
+                DataPropertyName = "RejectPrint",
+                HeaderText = "拒绝打印",
+                Width = 80,
+                ReadOnly = false
+            };
+            dgvSpecialRules.Columns.Add(specialRejectPrintColumn);
+        }
+
+        private void dgvRules_SelectionChanged(object sender, EventArgs e)
+        {
+            if (dgvRules.SelectedRows.Count > 0)
+            {
+                _currentRule = dgvRules.SelectedRows[0].DataBoundItem as ProductRule;
+                if (_currentRule != null)
+                {
+                    // 更新表单字段
+                    txtVersion.Text = _currentRule.Version;
+                    txtProductName.Text = _currentRule.ProductName;
+                    txtSpecification.Text = _currentRule.Specification;
+                    txtChickenHouse.Text = _currentRule.ChickenHouse;
+                    txtCustomerName.Text = _currentRule.CustomerName;
+                    txtWeightLowerLimit.Text = _currentRule.WeightLowerLimit.ToString();
+                    txtWeightUpperLimit.Text = _currentRule.WeightUpperLimit.ToString();
+                    chkRejectPrint.Checked = _currentRule.RejectPrint;
+                    txtQRCode.Text = _currentRule.QRCode;
+                    chkEnableSpecialRules.Checked = _currentRule.EnableSpecialRules;
+
+                    // 更新特殊规则表格
+                    _specialRuleBindingList = new BindingList<SpecialRuleCondition>(_currentRule.SpecialRules);
+                    dgvSpecialRules.DataSource = _specialRuleBindingList;
+
+                    // 启用编辑和删除按钮
+                    btnUpdateRule.Enabled = true;
+                    btnDeleteRule.Enabled = true;
+                    grpSpecialRules.Enabled = true;
+                }
+            }
+            else
+            {
+                ClearForm();
+                _currentRule = null;
+                btnUpdateRule.Enabled = false;
+                btnDeleteRule.Enabled = false;
+                grpSpecialRules.Enabled = false;
+                dgvSpecialRules.DataSource = null;
+            }
+        }
+
+        private void ClearForm()
+        {
+            txtVersion.Text = string.Empty;
+            txtProductName.Text = string.Empty;
+            txtSpecification.Text = string.Empty;
+            txtChickenHouse.Text = string.Empty;
+            txtCustomerName.Text = string.Empty;
+            txtWeightLowerLimit.Text = string.Empty;
+            txtWeightUpperLimit.Text = string.Empty;
+            chkRejectPrint.Checked = false;
+            txtQRCode.Text = string.Empty;
+            chkEnableSpecialRules.Checked = false;
+            txtSpecialChickenHouse.Text = string.Empty;
+            txtSpecialWeightLowerLimit.Text = string.Empty;
+            txtSpecialWeightUpperLimit.Text = string.Empty;
+            txtSpecialQRCode.Text = string.Empty;
+            chkSpecialRejectPrint.Checked = false;
+        }
+
+        private void btnAddRule_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                // 验证输入
+                if (string.IsNullOrWhiteSpace(txtVersion.Text))
+                {
+                    MessageBox.Show("版面不能为空", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (!double.TryParse(txtWeightLowerLimit.Text, out double lowerLimit))
+                {
+                    MessageBox.Show("重量下限必须是有效的数字", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (!double.TryParse(txtWeightUpperLimit.Text, out double upperLimit))
+                {
+                    MessageBox.Show("重量上限必须是有效的数字", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (lowerLimit > upperLimit)
+                {
+                    MessageBox.Show("重量下限不能大于重量上限", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 创建新规则
+                var newRule = new ProductRule
+                {
+                    Version = txtVersion.Text,
+                    ProductName = txtProductName.Text,
+                    Specification = txtSpecification.Text,
+                    ChickenHouse = txtChickenHouse.Text,
+                    CustomerName = txtCustomerName.Text,
+                    WeightLowerLimit = lowerLimit,
+                    WeightUpperLimit = upperLimit,
+                    RejectPrint = chkRejectPrint.Checked,
+                    QRCode = txtQRCode.Text,
+                    EnableSpecialRules = chkEnableSpecialRules.Checked,
+                    SpecialRules = new List<SpecialRuleCondition>()
+                };
+
+                // 添加规则
+                int newId = _ruleManager.AddRule(newRule);
+
+                if (newId == -1)
+                {
+                    // 规则重复
+                    MessageBox.Show("添加失败：已存在相同的规则（版面、鸡舍号、客户名和重量范围重叠）", "规则重复", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                Logger.Info($"添加了新规则，ID: {newId}");
+
+                // 刷新列表
+                LoadRules();
+                ClearForm();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "添加规则失败");
+                MessageBox.Show($"添加规则失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnUpdateRule_Click(object sender, EventArgs e)
+        {
+            if (_currentRule == null)
+            {
+                MessageBox.Show("请先选择一个规则", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                // 验证输入
+                if (string.IsNullOrWhiteSpace(txtVersion.Text))
+                {
+                    MessageBox.Show("版面不能为空", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (!double.TryParse(txtWeightLowerLimit.Text, out double lowerLimit))
+                {
+                    MessageBox.Show("重量下限必须是有效的数字", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (!double.TryParse(txtWeightUpperLimit.Text, out double upperLimit))
+                {
+                    MessageBox.Show("重量上限必须是有效的数字", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (lowerLimit > upperLimit)
+                {
+                    MessageBox.Show("重量下限不能大于重量上限", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 更新规则
+                _currentRule.Version = txtVersion.Text;
+                _currentRule.ProductName = txtProductName.Text;
+                _currentRule.Specification = txtSpecification.Text;
+                _currentRule.ChickenHouse = txtChickenHouse.Text;
+                _currentRule.CustomerName = txtCustomerName.Text;
+                _currentRule.WeightLowerLimit = lowerLimit;
+                _currentRule.WeightUpperLimit = upperLimit;
+                _currentRule.RejectPrint = chkRejectPrint.Checked;
+                _currentRule.QRCode = txtQRCode.Text;
+                _currentRule.EnableSpecialRules = chkEnableSpecialRules.Checked;
+
+                // 保存更新
+                bool updateSuccess = _ruleManager.UpdateRule(_currentRule);
+
+                if (!updateSuccess)
+                {
+                    // 规则重复
+                    MessageBox.Show("更新失败：已存在相同的规则（版面、鸡舍号、客户名和重量范围重叠）", "规则重复", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                    // 重新加载规则，恢复原始状态
+                    LoadRules();
+                    return;
+                }
+
+                Logger.Info($"更新了规则，ID: {_currentRule.Id}");
+
+                // 刷新列表
+                LoadRules();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "更新规则失败");
+                MessageBox.Show($"更新规则失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnDeleteRule_Click(object sender, EventArgs e)
+        {
+            if (_currentRule == null)
+            {
+                MessageBox.Show("请先选择一个规则", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                // 确认删除
+                DialogResult result = MessageBox.Show($"确定要删除规则 {_currentRule.Id} 吗？", "确认删除",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+                if (result == DialogResult.Yes)
+                {
+                    // 删除规则
+                    _ruleManager.DeleteRule(_currentRule.Id);
+                    Logger.Info($"删除了规则，ID: {_currentRule.Id}");
+
+                    // 刷新列表
+                    LoadRules();
+                    ClearForm();
+                    _currentRule = null;
+                    btnUpdateRule.Enabled = false;
+                    btnDeleteRule.Enabled = false;
+                    grpSpecialRules.Enabled = false;
+                    dgvSpecialRules.DataSource = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "删除规则失败");
+                MessageBox.Show($"删除规则失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnAddSpecialRule_Click(object sender, EventArgs e)
+        {
+            if (_currentRule == null)
+            {
+                MessageBox.Show("请先选择一个主规则", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                // 验证输入
+                if (!double.TryParse(txtSpecialWeightLowerLimit.Text, out double lowerLimit))
+                {
+                    MessageBox.Show("特殊规则重量下限必须是有效的数字", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (!double.TryParse(txtSpecialWeightUpperLimit.Text, out double upperLimit))
+                {
+                    MessageBox.Show("特殊规则重量上限必须是有效的数字", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (lowerLimit > upperLimit)
+                {
+                    MessageBox.Show("特殊规则重量下限不能大于重量上限", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(txtSpecialQRCode.Text))
+                {
+                    MessageBox.Show("特殊规则二维码不能为空", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 创建新的特殊规则条件
+                var newCondition = new SpecialRuleCondition
+                {
+                    ChickenHouse = txtSpecialChickenHouse.Text,
+                    WeightLowerLimit = lowerLimit,
+                    WeightUpperLimit = upperLimit,
+                    QRCode = txtSpecialQRCode.Text,
+                    RejectPrint = chkSpecialRejectPrint.Checked
+                };
+
+                // 检查特殊规则是否重复
+                if (_ruleManager.IsSpecialRuleConditionDuplicate(_currentRule, newCondition))
+                {
+                    MessageBox.Show("添加失败：已存在相同的特殊规则条件（鸡舍号和重量范围重叠）", "规则重复", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // 添加到当前规则
+                _currentRule.SpecialRules.Add(newCondition);
+                _currentRule.EnableSpecialRules = true;
+                chkEnableSpecialRules.Checked = true;
+
+                // 更新规则
+                bool updateSuccess = _ruleManager.UpdateRule(_currentRule);
+                if (!updateSuccess)
+                {
+                    MessageBox.Show("更新失败：添加特殊规则后与其他规则冲突", "规则重复", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                    // 移除刚添加的特殊规则
+                    _currentRule.SpecialRules.Remove(newCondition);
+                    return;
+                }
+
+                Logger.Info($"为规则 {_currentRule.Id} 添加了特殊规则条件");
+
+                // 刷新特殊规则表格
+                _specialRuleBindingList = new BindingList<SpecialRuleCondition>(_currentRule.SpecialRules);
+                dgvSpecialRules.DataSource = _specialRuleBindingList;
+
+                // 清空特殊规则输入框
+                txtSpecialChickenHouse.Text = string.Empty;
+                txtSpecialWeightLowerLimit.Text = string.Empty;
+                txtSpecialWeightUpperLimit.Text = string.Empty;
+                txtSpecialQRCode.Text = string.Empty;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "添加特殊规则条件失败");
+                MessageBox.Show($"添加特殊规则条件失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnDeleteSpecialRule_Click(object sender, EventArgs e)
+        {
+            if (_currentRule == null)
+            {
+                MessageBox.Show("请先选择一个主规则", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (dgvSpecialRules.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("请先选择一个特殊规则条件", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                // 获取选中的特殊规则条件
+                var selectedCondition = dgvSpecialRules.SelectedRows[0].DataBoundItem as SpecialRuleCondition;
+
+                // 从当前规则中移除
+                _currentRule.SpecialRules.Remove(selectedCondition);
+
+                // 如果没有特殊规则条件了，禁用特殊规则
+                if (_currentRule.SpecialRules.Count == 0)
+                {
+                    _currentRule.EnableSpecialRules = false;
+                    chkEnableSpecialRules.Checked = false;
+                }
+
+                // 更新规则
+                _ruleManager.UpdateRule(_currentRule);
+                Logger.Info($"从规则 {_currentRule.Id} 中删除了特殊规则条件");
+
+                // 刷新特殊规则表格
+                _specialRuleBindingList = new BindingList<SpecialRuleCondition>(_currentRule.SpecialRules);
+                dgvSpecialRules.DataSource = _specialRuleBindingList;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "删除特殊规则条件失败");
+                MessageBox.Show($"删除特殊规则条件失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnClear_Click(object sender, EventArgs e)
+        {
+            ClearForm();
+            _currentRule = null;
+            btnUpdateRule.Enabled = false;
+            btnDeleteRule.Enabled = false;
+            grpSpecialRules.Enabled = false;
+            dgvSpecialRules.DataSource = null;
+            dgvRules.ClearSelection();
+        }
+
+        private void chkRejectPrint_CheckedChanged(object sender, EventArgs e)
+        {
+            if (_currentRule != null)
+            {
+                _currentRule.RejectPrint = chkRejectPrint.Checked;
+                Logger.Debug($"拒绝打印状态已更改为: {chkRejectPrint.Checked}");
+            }
+        }
+
+        private void chkEnableSpecialRules_CheckedChanged(object sender, EventArgs e)
+        {
+            if (_currentRule != null)
+            {
+                _currentRule.EnableSpecialRules = chkEnableSpecialRules.Checked;
+                Logger.Debug($"启用特殊规则状态已更改为: {chkEnableSpecialRules.Checked}");
+
+                // 如果禁用特殊规则，但仍有特殊规则条件，提示用户
+                if (!chkEnableSpecialRules.Checked && _currentRule.SpecialRules.Count > 0)
+                {
+                    DialogResult result = MessageBox.Show(
+                        "当前规则包含特殊规则条件，但您已禁用特殊规则。是否要清空特殊规则条件？",
+                        "确认",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question);
+
+                    if (result == DialogResult.Yes)
+                    {
+                        _currentRule.SpecialRules.Clear();
+                        _specialRuleBindingList = new BindingList<SpecialRuleCondition>(_currentRule.SpecialRules);
+                        dgvSpecialRules.DataSource = _specialRuleBindingList;
+                        Logger.Info("已清空特殊规则条件");
+                    }
+                }
+            }
+        }
+
+        private void dgvRules_CellContentClick(object sender, DataGridViewCellEventArgs e)
+        {
+            // 检查点击的是否是复选框列
+            if (e.RowIndex >= 0)
+            {
+                var rule = _ruleBindingList[e.RowIndex];
+
+                // 拒绝打印列
+                if (e.ColumnIndex == 7) // 根据列索引判断，可能需要调整
+                {
+                    rule.RejectPrint = !rule.RejectPrint;
+                    Logger.Debug($"表格中拒绝打印状态已更改为: {rule.RejectPrint}，规则ID: {rule.Id}");
+
+                    // 如果当前选中的规则就是被修改的规则，同步更新表单中的复选框
+                    if (_currentRule != null && _currentRule.Id == rule.Id)
+                    {
+                        chkRejectPrint.Checked = rule.RejectPrint;
+                    }
+
+                    // 立即保存更改
+                    _ruleManager.UpdateRule(rule);
+
+                    // 刷新表格
+                    dgvRules.Refresh();
+                }
+                // 启用特殊规则列
+                else if (e.ColumnIndex == 9) // 根据列索引判断，可能需要调整
+                {
+                    rule.EnableSpecialRules = !rule.EnableSpecialRules;
+                    Logger.Debug($"表格中启用特殊规则状态已更改为: {rule.EnableSpecialRules}，规则ID: {rule.Id}");
+
+                    // 如果当前选中的规则就是被修改的规则，同步更新表单中的复选框
+                    if (_currentRule != null && _currentRule.Id == rule.Id)
+                    {
+                        chkEnableSpecialRules.Checked = rule.EnableSpecialRules;
+                    }
+
+                    // 立即保存更改
+                    _ruleManager.UpdateRule(rule);
+
+                    // 刷新表格
+                    dgvRules.Refresh();
+                }
+            }
+        }
+
+        private void dgvSpecialRules_CellContentClick(object sender, DataGridViewCellEventArgs e)
+        {
+            // 检查点击的是否是复选框列，并且当前有选中的规则
+            if (e.RowIndex >= 0 && _currentRule != null)
+            {
+                var specialRule = _specialRuleBindingList[e.RowIndex];
+
+                // 拒绝打印列（假设是第5列，索引为4）
+                if (e.ColumnIndex == 4) // 根据列索引判断，可能需要调整
+                {
+                    specialRule.RejectPrint = !specialRule.RejectPrint;
+                    Logger.Debug($"特殊规则表格中拒绝打印状态已更改为: {specialRule.RejectPrint}，重量范围: [{specialRule.WeightLowerLimit}-{specialRule.WeightUpperLimit}]");
+
+                    // 立即保存更改
+                    _ruleManager.UpdateRule(_currentRule);
+
+                    // 刷新表格
+                    dgvSpecialRules.Refresh();
+                }
+            }
+        }
+
+        private void chkSpecialRejectPrint_CheckedChanged(object sender, EventArgs e)
+        {
+            // 记录特殊规则的拒绝打印状态变化
+            Logger.Debug($"特殊规则拒绝打印状态已更改为: {chkSpecialRejectPrint.Checked}");
+        }
+    }
+}

@@ -14,6 +14,7 @@ using Seagull.BarTender.Print;
 using NLog;
 using EasyModbus;
 using Newtonsoft.Json;
+using System.Globalization;
 
 namespace WindowsFormsApp1
 {
@@ -39,6 +40,7 @@ namespace WindowsFormsApp1
         private DateTime factoryStartDate;
 
         private List<PrintTemplate> _templates = new List<PrintTemplate>();
+        private ProductRuleManager _productRuleManager;
         public Form1()
         {
             InitializeComponent();
@@ -64,6 +66,9 @@ namespace WindowsFormsApp1
             factoryStartDate = DateTime.Parse("2022-01-01");
 
             LoadTemplates(); // 加载分类模板信息
+
+            // 初始化产品规则管理器
+            _productRuleManager = new ProductRuleManager();
 
             // 使用Timer在UI初始化完成后执行自动启动操作
             System.Windows.Forms.Timer startupTimer = new System.Windows.Forms.Timer();
@@ -314,7 +319,13 @@ namespace WindowsFormsApp1
                 return;
             }
 
-            if (!connected)
+            if (connected)
+            {
+                // 客户端连接时，我们还不知道具体的客户端信息
+                // 这个信息会在MessageReceived事件中通过CONNECT消息提供
+                UpdateClientInfo("已连接");
+            }
+            else
             {
                 UpdateClientInfo("未连接");
             }
@@ -413,17 +424,102 @@ namespace WindowsFormsApp1
             {
                 if (string.IsNullOrWhiteSpace(message)) return;
 
-                // key | slot | flag
-                var parts = message.Split(new[] { '|' }, 4, StringSplitOptions.None);
+                // 检查是否是连接/断开消息
+                if (message.StartsWith("CONNECT|"))
+                {
+                    string clientInfo = message.Substring(8); // 去掉"CONNECT|"前缀
+                    UpdateClientInfo(clientInfo);
+                    // 不再添加日志，因为TcpServer.cs中已经添加了
+                    return;
+                }
+                else if (message == "DISCONNECT")
+                {
+                    UpdateClientInfo("未连接");
+                    // 不再添加日志，因为TcpServer.cs中已经添加了
+                    return;
+                }
 
-                string key = parts[0];
-                string slot = (parts.Length > 1) ? parts[1] : null;
-                string flag = (parts.Length > 2) ? parts[2] : "0";   // 默认 0 = 打印
-                string status = (parts.Length > 3) ? parts[3] : "0";   // 默认 0 = 打印
+                // 解析消息
+                // 格式：品类|鸡舍|大标签数量|版面状态|二维码
+                var parts = message.Split(new[] { '|' }, StringSplitOptions.None);
 
+                // 提取消息中的信息
+                string category = parts.Length > 0 ? parts[0] : null;
+                string chickenHouse = parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1] : null;
+                string tagQuantity = parts.Length > 2 ? parts[2] : null;
+                string panelStatus = parts.Length > 3 ? parts[3] : null;
+                string qrCode = parts.Length > 4 && !string.IsNullOrWhiteSpace(parts[4]) && !parts[4].Equals("null", StringComparison.OrdinalIgnoreCase) ? parts[4] : null;
+                string customerName = parts.Length > 5 && !string.IsNullOrWhiteSpace(parts[5]) ? parts[5] : null;
+
+                // 记录接收到的消息
+                Logger.Info($"接收到消息: 品类={category}, 鸡舍={chickenHouse}, 标签数量={tagQuantity}, 版面状态={panelStatus}, 二维码={qrCode}, 客户名={customerName}");
+                OnLogMessage($"接收到消息: 品类={category}, 鸡舍={chickenHouse}, 版面状态={panelStatus}");
+
+                // 如果没有品类，无法处理
+                if (string.IsNullOrWhiteSpace(category))
+                {
+                    Logger.Warn("消息中缺少品类信息，无法处理");
+                    return;
+                }
+
+                // 获取重量
+                string weightStr = GetWeightFunction().Trim();
+                if (weightStr == "--.-" || !double.TryParse(weightStr.Replace(',', '.'),
+                                     NumberStyles.Any,
+                                     CultureInfo.InvariantCulture,
+                                     out double weight))
+                {
+                    Logger.Warn($"无法获取有效重量: {weightStr}");
+                    return;
+                }
+
+                // 使用新的产品规则管理器查找匹配的规则
+                // 注意：我们使用category（品类）作为版面信息，而不是panelStatus
+                ProductRule matchedRule = _productRuleManager.FindMatchingRule(category, chickenHouse, customerName, weight);
+
+                if (matchedRule != null)
+                {
+                    // 检查是否拒绝打印
+                    if (matchedRule.RejectPrint)
+                    {
+                        Logger.Info($"根据规则 {matchedRule.Id} 拒绝打印");
+                        OnLogMessage($"根据规则拒绝打印: 版面={panelStatus}, 重量={weight}");
+                        return;
+                    }
+
+                    // 打印
+                    string traceabilityCode = GenerateTraceabilityCode();
+
+                    Pint_model(1,
+                               matchedRule.ProductName,
+                               matchedRule.Specification,
+                               weightStr,
+                               traceabilityCode,
+                               matchedRule.QRCode);
+
+                    Logger.Info($"使用规则 {matchedRule.Id} 打印: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 二维码={matchedRule.QRCode}");
+                    OnLogMessage($"打印成功: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}");
+                }
+                else
+                {
+                    // 如果没有找到匹配的规则，尝试使用旧的模板方式
+                    ProcessMessageWithLegacyMethod(category, chickenHouse, panelStatus, weightStr);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "处理接收消息时出错");
+                OnLogMessage($"处理消息出错: {ex.Message}");
+            }
+        }
+
+        private void ProcessMessageWithLegacyMethod(string key, string slot, string status, string weightStr)
+        {
+            try
+            {
+                // 旧的处理逻辑
+                if (string.IsNullOrWhiteSpace(key)) return;
                 if (status == "0") return;
-                // ① flag == 1 → 不打印
-                if (flag == "1") return;
 
                 // ② slot 是否有效
                 bool hasSlot = !string.IsNullOrWhiteSpace(slot) &&
@@ -434,17 +530,14 @@ namespace WindowsFormsApp1
                     return;
 
                 string templateKey = hasSlot ? $"{key}-{slot}" : key;
-
-                // ④ 取得重量，只调用一次
-                string weightStr = GetWeightFunction().Trim();
                 string qrOverride = null;        // 默认不改二维码
 
                 // ⑤ 如为 xmyjpxjd360 → 区间 + 二维码校验
                 if (key.Equals("xmyjpxjd360", StringComparison.OrdinalIgnoreCase))
                 {
                     if (!double.TryParse(weightStr.Replace(',', '.'),
-                                         System.Globalization.NumberStyles.Any,
-                                         System.Globalization.CultureInfo.InvariantCulture,
+                                         NumberStyles.Any,
+                                         CultureInfo.InvariantCulture,
                                          out double w))
                     {
                         Logger.Warn($"无法解析重量: {weightStr}");
@@ -460,10 +553,12 @@ namespace WindowsFormsApp1
 
                 // ⑥ 打印
                 PrintTemplate(templateKey, weightStr, qrOverride);
+                Logger.Info($"使用旧方法打印: 模板={templateKey}, 重量={weightStr}, 二维码={qrOverride ?? "默认"}");
+                OnLogMessage($"使用旧方法打印: 模板={templateKey}");
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error processing received message");
+                Logger.Error(ex, "使用旧方法处理消息时出错");
             }
         }
 
@@ -810,9 +905,18 @@ namespace WindowsFormsApp1
 
         private void button1_Click_1(object sender, EventArgs e)
         {
-            GetWeightFunction();
-            var res = GenerateTraceabilityCode();
-            OnLogMessage(res);
+            TemplateManagerForm templateManagerForm = new TemplateManagerForm();
+            templateManagerForm.ShowDialog();  // 打开模板管理窗口
+        }
+
+        private void btnProductRules_Click(object sender, EventArgs e)
+        {
+            ProductRuleForm form = new ProductRuleForm();
+            form.ShowDialog();
+
+            // 重新加载产品规则
+            _productRuleManager = new ProductRuleManager();
+            OnLogMessage("已重新加载产品规则");
         }
 
 

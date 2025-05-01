@@ -1,0 +1,109 @@
+[
+  {
+    "Id": 1,
+    "Version": "xhxy",
+    "ProductName": "元初蛋捐相粮鲜鸡蛋",
+    "Specification": "30枚/盒+10盒",
+    "ChickenHouse": "1-1",
+    "CustomerName": "ESP",
+    "WeightLowerLimit": 16.8,
+    "WeightUpperLimit": 17.4,
+    "RejectPrint": false,
+    "QRCode": "XMY001",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 2,
+    "Version": "xhxy",
+    "ProductName": "元初蛋捐相粮鲜鸡蛋",
+    "Specification": "30枚/盒+10盒",
+    "ChickenHouse": "1-1",
+    "CustomerName": "XMY",
+    "WeightLowerLimit": 16.8,
+    "WeightUpperLimit": 17.8,
+    "RejectPrint": false,
+    "QRCode": "XMY002",
+    "EnableSpecialRules": false,
+    "SpecialRules": []
+  },
+  {
+    "Id": 3,
+    "Version": "xmyjpxjd360",
+    "ProductName": "特殊处理产品A",
+    "Specification": "360枚/箱",
+    "ChickenHouse": "2-1",
+    "CustomerName": null,
+    "WeightLowerLimit": 15.0,
+    "WeightUpperLimit": 25.0,
+    "RejectPrint": false,
+    "QRCode": "默认二维码",
+    "EnableSpecialRules": true,
+    "SpecialRules": [
+      {
+        "ChickenHouse": "2-1",
+        "WeightLowerLimit": 20.5,
+        "WeightUpperLimit": 21.1,
+        "QRCode": "1790",
+        "RejectPrint": false
+      },
+      {
+        "ChickenHouse": "2-1",
+        "WeightLowerLimit": 22.0,
+        "WeightUpperLimit": 22.4,
+        "QRCode": "1791",
+        "RejectPrint": false
+      },
+      {
+        "ChickenHouse": "2-1",
+        "WeightLowerLimit": 23.9,
+        "WeightUpperLimit": 24.1,
+        "QRCode": "1792",
+        "RejectPrint": false
+      },
+      {
+        "ChickenHouse": "2-1",
+        "WeightLowerLimit": 15.8,
+        "WeightUpperLimit": 16.6,
+        "QRCode": "1793",
+        "RejectPrint": true
+      }
+    ]
+  },
+  {
+    "Id": 4,
+    "Version": "xmyjpxjd360",
+    "ProductName": "特殊处理产品B",
+    "Specification": "360枚/箱",
+    "ChickenHouse": "1-1",
+    "CustomerName": null,
+    "WeightLowerLimit": 15.0,
+    "WeightUpperLimit": 25.0,
+    "RejectPrint": false,
+    "QRCode": "默认二维码B",
+    "EnableSpecialRules": true,
+    "SpecialRules": [
+      {
+        "ChickenHouse": "1-1",
+        "WeightLowerLimit": 19.5,
+        "WeightUpperLimit": 20.1,
+        "QRCode": "2790",
+        "RejectPrint": false
+      },
+      {
+        "ChickenHouse": "1-1",
+        "WeightLowerLimit": 21.0,
+        "WeightUpperLimit": 21.4,
+        "QRCode": "2791",
+        "RejectPrint": false
+      },
+      {
+        "ChickenHouse": "1-1",
+        "WeightLowerLimit": 22.9,
+        "WeightUpperLimit": 23.1,
+        "QRCode": "2792",
+        "RejectPrint": true
+      }
+    ]
+  }
+]
