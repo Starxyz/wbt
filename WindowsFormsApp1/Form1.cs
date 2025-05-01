@@ -420,20 +420,27 @@ namespace WindowsFormsApp1
 
         private void OnMessageReceived(string message)
         {
+            Logger.Debug($"开始处理接收到的消息: {message}");
             try
             {
-                if (string.IsNullOrWhiteSpace(message)) return;
+                if (string.IsNullOrWhiteSpace(message))
+                {
+                    Logger.Warn("接收到空消息，忽略处理");
+                    return;
+                }
 
                 // 检查是否是连接/断开消息
                 if (message.StartsWith("CONNECT|"))
                 {
                     string clientInfo = message.Substring(8); // 去掉"CONNECT|"前缀
+                    Logger.Debug($"接收到客户端连接消息，客户端信息: {clientInfo}");
                     UpdateClientInfo(clientInfo);
                     // 不再添加日志，因为TcpServer.cs中已经添加了
                     return;
                 }
                 else if (message == "DISCONNECT")
                 {
+                    Logger.Debug("接收到客户端断开消息");
                     UpdateClientInfo("未连接");
                     // 不再添加日志，因为TcpServer.cs中已经添加了
                     return;
@@ -442,6 +449,7 @@ namespace WindowsFormsApp1
                 // 解析消息
                 // 格式：品类|鸡舍|大标签数量|版面状态|二维码
                 var parts = message.Split(new[] { '|' }, StringSplitOptions.None);
+                Logger.Debug($"消息解析为 {parts.Length} 个部分");
 
                 // 提取消息中的信息
                 string category = parts.Length > 0 ? parts[0] : null;
@@ -459,37 +467,47 @@ namespace WindowsFormsApp1
                 if (string.IsNullOrWhiteSpace(category))
                 {
                     Logger.Warn("消息中缺少品类信息，无法处理");
+                    OnLogMessage("消息中缺少品类信息，无法处理");
                     return;
                 }
 
                 // 获取重量
+                Logger.Debug("开始获取重量数据");
                 string weightStr = GetWeightFunction().Trim();
+                Logger.Debug($"获取到重量数据: {weightStr}");
+
                 if (weightStr == "--.-" || !double.TryParse(weightStr.Replace(',', '.'),
                                      NumberStyles.Any,
                                      CultureInfo.InvariantCulture,
                                      out double weight))
                 {
                     Logger.Warn($"无法获取有效重量: {weightStr}");
+                    OnLogMessage($"无法获取有效重量: {weightStr}，不执行打印");
                     return;
                 }
 
                 // 使用新的产品规则管理器查找匹配的规则
                 // 注意：我们使用category（品类）作为版面信息，而不是panelStatus
+                Logger.Debug($"开始查找匹配规则: 品类={category}, 鸡舍={chickenHouse}, 客户名={customerName}, 重量={weight}");
                 ProductRule matchedRule = _productRuleManager.FindMatchingRule(category, chickenHouse, customerName, weight);
 
                 if (matchedRule != null)
                 {
+                    Logger.Debug($"找到匹配规则: ID={matchedRule.Id}, 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}");
+
                     // 检查是否拒绝打印
                     if (matchedRule.RejectPrint)
                     {
-                        Logger.Info($"根据规则 {matchedRule.Id} 拒绝打印");
+                        Logger.Info($"根据规则 {matchedRule.Id} 拒绝打印: 品类={category}, 鸡舍={chickenHouse}, 重量={weight}");
                         OnLogMessage($"根据规则拒绝打印: 版面={panelStatus}, 重量={weight}");
                         return;
                     }
 
                     // 打印
                     string traceabilityCode = GenerateTraceabilityCode();
+                    Logger.Debug($"生成追溯码: {traceabilityCode}");
 
+                    Logger.Debug($"开始执行打印: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 重量={weightStr}, 二维码={matchedRule.QRCode}");
                     Pint_model(1,
                                matchedRule.ProductName,
                                matchedRule.Specification,
@@ -497,11 +515,12 @@ namespace WindowsFormsApp1
                                traceabilityCode,
                                matchedRule.QRCode);
 
-                    Logger.Info($"使用规则 {matchedRule.Id} 打印: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 二维码={matchedRule.QRCode}");
+                    Logger.Info($"使用规则 {matchedRule.Id} 打印: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 二维码={matchedRule.QRCode}, 重量={weightStr}");
                     OnLogMessage($"打印成功: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}");
                 }
                 else
                 {
+                    Logger.Debug($"未找到匹配规则，尝试使用旧的模板方式处理: 品类={category}, 鸡舍={chickenHouse}, 版面状态={panelStatus}");
                     // 如果没有找到匹配的规则，尝试使用旧的模板方式
                     ProcessMessageWithLegacyMethod(category, chickenHouse, panelStatus, weightStr);
                 }
@@ -511,47 +530,94 @@ namespace WindowsFormsApp1
                 Logger.Error(ex, "处理接收消息时出错");
                 OnLogMessage($"处理消息出错: {ex.Message}");
             }
+            finally
+            {
+                Logger.Debug("消息处理完成");
+            }
         }
 
         private void ProcessMessageWithLegacyMethod(string key, string slot, string status, string weightStr)
         {
+            Logger.Debug($"开始使用旧方法处理消息: 品类={key}, 鸡舍={slot}, 版面状态={status}, 重量={weightStr}");
             try
             {
                 // 旧的处理逻辑
-                if (string.IsNullOrWhiteSpace(key)) return;
-                if (status == "0") return;
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    Logger.Warn("品类为空，无法处理");
+                    return;
+                }
+
+                if (status == "0")
+                {
+                    Logger.Debug("版面状态为0，不执行打印");
+                    return;
+                }
 
                 // ② slot 是否有效
                 bool hasSlot = !string.IsNullOrWhiteSpace(slot) &&
                                !slot.Equals("null", StringComparison.OrdinalIgnoreCase);
+                Logger.Debug($"鸡舍是否有效: {hasSlot}");
 
                 // ③ xmyjpxjd360 + slot 无效 → 不打印
                 if (key.Equals("xmyjpxjd360", StringComparison.OrdinalIgnoreCase) && !hasSlot)
+                {
+                    Logger.Debug("品类为xmyjpxjd360且鸡舍无效，不执行打印");
                     return;
+                }
 
                 string templateKey = hasSlot ? $"{key}-{slot}" : key;
+                Logger.Debug($"生成模板键: {templateKey}");
+
                 string qrOverride = null;        // 默认不改二维码
 
                 // ⑤ 如为 xmyjpxjd360 → 区间 + 二维码校验
                 if (key.Equals("xmyjpxjd360", StringComparison.OrdinalIgnoreCase))
                 {
+                    Logger.Debug("品类为xmyjpxjd360，进行重量区间和二维码校验");
+
                     if (!double.TryParse(weightStr.Replace(',', '.'),
                                          NumberStyles.Any,
                                          CultureInfo.InvariantCulture,
                                          out double w))
                     {
                         Logger.Warn($"无法解析重量: {weightStr}");
+                        OnLogMessage($"无法解析重量: {weightStr}，不执行打印");
                         return;
                     }
 
-                    if (w >= 20.5 && w <= 21.1) { qrOverride = "1790"; }
-                    else if (w >= 22.0 && w <= 22.4) { qrOverride = "1791"; }
-                    else if (w >= 23.9 && w <= 24.1) { qrOverride = "1792"; }
-                    else if (w >= 15.8 && w <= 16.6) { qrOverride = "1793"; }
-                    else { return; }                // 不在三段区间 → 不打印
+                    Logger.Debug($"解析后的重量值: {w}");
+
+                    if (w >= 20.5 && w <= 21.1)
+                    {
+                        qrOverride = "1790";
+                        Logger.Debug($"重量 {w} 在区间 [20.5-21.1]，使用二维码: 1790");
+                    }
+                    else if (w >= 22.0 && w <= 22.4)
+                    {
+                        qrOverride = "1791";
+                        Logger.Debug($"重量 {w} 在区间 [22.0-22.4]，使用二维码: 1791");
+                    }
+                    else if (w >= 23.9 && w <= 24.1)
+                    {
+                        qrOverride = "1792";
+                        Logger.Debug($"重量 {w} 在区间 [23.9-24.1]，使用二维码: 1792");
+                    }
+                    else if (w >= 15.8 && w <= 16.6)
+                    {
+                        qrOverride = "1793";
+                        Logger.Debug($"重量 {w} 在区间 [15.8-16.6]，使用二维码: 1793");
+                    }
+                    else
+                    {
+                        Logger.Debug($"重量 {w} 不在任何指定区间内，不执行打印");
+                        OnLogMessage($"重量 {w} 不在指定区间内，不执行打印");
+                        return;
+                    }                // 不在三段区间 → 不打印
                 }
 
                 // ⑥ 打印
+                Logger.Debug($"开始使用模板打印: 模板={templateKey}, 重量={weightStr}, 二维码={qrOverride ?? "默认"}");
                 PrintTemplate(templateKey, weightStr, qrOverride);
                 Logger.Info($"使用旧方法打印: 模板={templateKey}, 重量={weightStr}, 二维码={qrOverride ?? "默认"}");
                 OnLogMessage($"使用旧方法打印: 模板={templateKey}");
@@ -559,6 +625,11 @@ namespace WindowsFormsApp1
             catch (Exception ex)
             {
                 Logger.Error(ex, "使用旧方法处理消息时出错");
+                OnLogMessage($"使用旧方法处理消息时出错: {ex.Message}");
+            }
+            finally
+            {
+                Logger.Debug("旧方法处理消息完成");
             }
         }
 
@@ -568,23 +639,32 @@ namespace WindowsFormsApp1
 
         private void PrintTemplate(string key, string weight, string overrideQrCode = null)
         {
+            Logger.Debug($"开始查找模板: {key}");
             var tpl = FindTemplateByKey(key);
             if (tpl != null)
             {
-                string traceabilityCode = GenerateTraceabilityCode();
-                string qrCodeToUse = overrideQrCode ?? tpl.qrcode;
+                Logger.Debug($"找到模板: {key}, 品名={tpl.productName}, 规格={tpl.spec}, 默认二维码={tpl.qrcode}");
 
+                string traceabilityCode = GenerateTraceabilityCode();
+                Logger.Debug($"生成追溯码: {traceabilityCode}");
+
+                string qrCodeToUse = overrideQrCode ?? tpl.qrcode;
+                Logger.Debug($"使用二维码: {qrCodeToUse}" + (overrideQrCode != null ? " (覆盖默认值)" : " (使用默认值)"));
+
+                Logger.Debug($"开始执行打印: 品名={tpl.productName}, 规格={tpl.spec}, 重量={weight}, 二维码={qrCodeToUse}");
                 Pint_model(1,
                            tpl.productName,
                            tpl.spec,
                            weight,
                            traceabilityCode,
                            qrCodeToUse);
+
+                Logger.Info($"模板打印成功: 模板={key}, 品名={tpl.productName}, 规格={tpl.spec}, 重量={weight}, 二维码={qrCodeToUse}");
             }
             else
             {
                 Logger.Warn($"未找到模板: {key}");
-                OnLogMessage($"未找到模板: {key}");
+                OnLogMessage($"未找到模板: {key}，无法执行打印");
             }
         }
 
@@ -594,64 +674,88 @@ namespace WindowsFormsApp1
                              string spec = "360枚", string weight = "12",
                              string date = "20250204", string qrCode = "8879")
         {
-            Logger.Info($"开始打印，数量: {printnum}");
+            var startTime = DateTime.Now;
+            Logger.Info($"开始打印任务: 数量={printnum}, 品名={productName}, 规格={spec}, 重量={weight}, 日期={date}, 二维码={qrCode}");
+
             // 检查模板是否已打开
             if (!_templateOpened || format == null)
             {
                 Logger.Error("模板未打开，请先选择并加载模板文件");
+                OnLogMessage("错误: 模板未打开，请先选择并加载模板文件");
                 MessageBox.Show("请先选择并加载模板文件", "错误",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
             btn_print.Enabled = false;
+            Logger.Debug("禁用打印按钮，防止重复点击");
 
             try
             {
                 // 确保引擎在运行
                 if (!engine.IsAlive)
                 {
+                    Logger.Debug("打印引擎未运行，正在启动...");
                     engine.Start();
+                    Logger.Debug("打印引擎启动成功");
+                }
+                else
+                {
+                    Logger.Debug("打印引擎已在运行状态");
                 }
 
                 for (int i = 0; i < printnum; i++)
                 {
+                    var itemStartTime = DateTime.Now;
+                    Logger.Debug($"开始打印第 {i + 1}/{printnum} 份");
+
                     try
                     {
                         // 设置打印数据
+                        Logger.Debug("开始设置打印数据...");
                         format.SubStrings["品名"].Value = $"品名：{productName}";
                         format.SubStrings["规格"].Value = $"规格：{spec}";
                         format.SubStrings["斤数"].Value = $"{weight} ";
-                        format.SubStrings["生产日期"].Value = $"{date}";//$"生产日期：{date}";
+                        format.SubStrings["生产日期"].Value = $"{date}";
                         format.SubStrings["二维码"].Value = qrCode;
+                        Logger.Debug("打印数据设置完成");
 
                         // 执行打印
+                        Logger.Debug("开始执行打印...");
                         Result rel = format.Print(); // 获取打印状态
+
                         if (rel == Result.Success)
                         {
-                            Logger.Info($"第 {i + 1} 份打印成功");
+                            var itemDuration = (DateTime.Now - itemStartTime).TotalMilliseconds;
+                            Logger.Info($"第 {i + 1}/{printnum} 份打印成功，耗时: {itemDuration:F0}ms");
                         }
                         else
                         {
-                            Logger.Error($"第 {i + 1} 份打印失败");
+                            Logger.Error($"第 {i + 1}/{printnum} 份打印失败，返回状态: {rel}");
+                            OnLogMessage($"第 {i + 1}/{printnum} 份打印失败");
                         }
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error(ex, $"第 {i + 1} 份打印异常: {ex.ToString()}");
+                        Logger.Error(ex, $"第 {i + 1}/{printnum} 份打印异常: {ex.Message}");
+                        OnLogMessage($"第 {i + 1}/{printnum} 份打印异常: {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, $"打印过程中发生异常: {ex.ToString()}");
+                Logger.Error(ex, $"打印过程中发生异常: {ex.Message}");
+                OnLogMessage($"打印过程中发生异常: {ex.Message}");
             }
             finally
             {
                 btn_print.Enabled = true;
-                Logger.Info("打印任务完成");
-            }
+                Logger.Debug("启用打印按钮");
 
+                var totalDuration = (DateTime.Now - startTime).TotalMilliseconds;
+                Logger.Info($"打印任务完成，总耗时: {totalDuration:F0}ms，打印数量: {printnum}");
+                OnLogMessage($"打印任务完成，共 {printnum} 份");
+            }
         }
 
         private void btn_print_Click(object sender, EventArgs e)
