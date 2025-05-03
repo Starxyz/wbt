@@ -45,17 +45,116 @@ namespace WindowsFormsApp1
         /// <returns>如果重复返回true，否则返回false</returns>
         public bool IsRuleDuplicate(ProductRule rule, int excludeId = 0)
         {
-            // 检查是否有相同版面、鸡舍号、客户名和重量范围重叠的规则
-            return _rules.Any(r =>
-                r.Id != excludeId && // 排除自身
-                r.Version == rule.Version && // 相同版面
-                (string.IsNullOrEmpty(r.ChickenHouse) || string.IsNullOrEmpty(rule.ChickenHouse) || r.ChickenHouse == rule.ChickenHouse) && // 相同鸡舍号或任一为空
-                (string.IsNullOrEmpty(r.CustomerName) || string.IsNullOrEmpty(rule.CustomerName) || r.CustomerName == rule.CustomerName) && // 相同客户名或任一为空
-                // 重量范围重叠
-                ((r.WeightLowerLimit <= rule.WeightLowerLimit && rule.WeightLowerLimit <= r.WeightUpperLimit) ||
-                 (r.WeightLowerLimit <= rule.WeightUpperLimit && rule.WeightUpperLimit <= r.WeightUpperLimit) ||
-                 (rule.WeightLowerLimit <= r.WeightLowerLimit && r.WeightUpperLimit <= rule.WeightUpperLimit))
-            );
+            Logger.Debug($"开始检查规则是否重复: 版面={rule.Version}, 鸡舍={rule.ChickenHouse ?? "未指定"}, 客户名={rule.CustomerName ?? "未指定"}, 重量范围=[{rule.WeightLowerLimit}-{rule.WeightUpperLimit}], 排除ID={excludeId}");
+
+            // 首先筛选出相同版面的规则，排除自身
+            var sameVersionRules = _rules.Where(r =>
+                r.Id != excludeId &&
+                r.Version == rule.Version
+            ).ToList();
+
+            Logger.Debug($"找到相同版面的规则数量: {sameVersionRules.Count}");
+
+            foreach (var existingRule in sameVersionRules)
+            {
+                // 检查鸡舍号是否匹配
+                // 如果两个规则都指定了鸡舍号，则必须完全相同才匹配
+                // 如果两个规则都未指定鸡舍号，则匹配
+                // 如果一个规则指定了鸡舍号，另一个未指定，则不匹配
+                bool chickenHouseMatch;
+                if (string.IsNullOrEmpty(existingRule.ChickenHouse) && string.IsNullOrEmpty(rule.ChickenHouse))
+                {
+                    // 两者都没有指定鸡舍号，匹配
+                    chickenHouseMatch = true;
+                    Logger.Debug($"规则ID={existingRule.Id} 鸡舍号比较: 两个规则都未指定鸡舍号，匹配结果=true");
+                }
+                else if (!string.IsNullOrEmpty(existingRule.ChickenHouse) && !string.IsNullOrEmpty(rule.ChickenHouse))
+                {
+                    // 两者都指定了鸡舍号，必须完全相同
+                    chickenHouseMatch = (existingRule.ChickenHouse == rule.ChickenHouse);
+                    Logger.Debug($"规则ID={existingRule.Id} 鸡舍号比较: 现有规则鸡舍号={existingRule.ChickenHouse}, 新规则鸡舍号={rule.ChickenHouse}, 匹配结果={chickenHouseMatch}");
+                }
+                else
+                {
+                    // 一个规则指定了鸡舍号，另一个未指定，不匹配
+                    chickenHouseMatch = false;
+                    Logger.Debug($"规则ID={existingRule.Id} 鸡舍号比较: 现有规则鸡舍号={existingRule.ChickenHouse ?? "未指定"}, 新规则鸡舍号={rule.ChickenHouse ?? "未指定"}, 匹配结果=false (一个有鸡舍号，一个没有)");
+                }
+
+                if (!chickenHouseMatch)
+                {
+                    Logger.Debug($"规则ID={existingRule.Id} 鸡舍号不匹配，跳过");
+                    continue;
+                }
+
+                // 检查客户名是否匹配
+                // 如果两个规则都指定了客户名，则必须完全相同才匹配
+                // 如果两个规则都未指定客户名，则匹配
+                // 如果一个规则指定了客户名，另一个未指定，则不匹配
+                bool customerNameMatch;
+                if (string.IsNullOrEmpty(existingRule.CustomerName) && string.IsNullOrEmpty(rule.CustomerName))
+                {
+                    // 两者都没有指定客户名，匹配
+                    customerNameMatch = true;
+                    Logger.Debug($"规则ID={existingRule.Id} 客户名比较: 两个规则都未指定客户名，匹配结果=true");
+                }
+                else if (!string.IsNullOrEmpty(existingRule.CustomerName) && !string.IsNullOrEmpty(rule.CustomerName))
+                {
+                    // 两者都指定了客户名，必须完全相同
+                    customerNameMatch = (existingRule.CustomerName == rule.CustomerName);
+                    Logger.Debug($"规则ID={existingRule.Id} 客户名比较: 现有规则客户名={existingRule.CustomerName}, 新规则客户名={rule.CustomerName}, 匹配结果={customerNameMatch}");
+                }
+                else
+                {
+                    // 一个规则指定了客户名，另一个未指定，不匹配
+                    customerNameMatch = false;
+                    Logger.Debug($"规则ID={existingRule.Id} 客户名比较: 现有规则客户名={existingRule.CustomerName ?? "未指定"}, 新规则客户名={rule.CustomerName ?? "未指定"}, 匹配结果=false (一个有客户名，一个没有)");
+                }
+
+                if (!customerNameMatch)
+                {
+                    Logger.Debug($"规则ID={existingRule.Id} 客户名不匹配，跳过");
+                    continue;
+                }
+
+                // 检查重量范围是否重叠
+                bool weightRangeOverlap = false;
+
+                // 情况1: 新规则的下限在现有规则的范围内
+                if (existingRule.WeightLowerLimit <= rule.WeightLowerLimit &&
+                    rule.WeightLowerLimit <= existingRule.WeightUpperLimit)
+                {
+                    weightRangeOverlap = true;
+                    Logger.Debug($"规则ID={existingRule.Id} 重量范围重叠: 新规则下限 {rule.WeightLowerLimit} 在现有规则范围 [{existingRule.WeightLowerLimit}-{existingRule.WeightUpperLimit}] 内");
+                }
+                // 情况2: 新规则的上限在现有规则的范围内
+                else if (existingRule.WeightLowerLimit <= rule.WeightUpperLimit &&
+                         rule.WeightUpperLimit <= existingRule.WeightUpperLimit)
+                {
+                    weightRangeOverlap = true;
+                    Logger.Debug($"规则ID={existingRule.Id} 重量范围重叠: 新规则上限 {rule.WeightUpperLimit} 在现有规则范围 [{existingRule.WeightLowerLimit}-{existingRule.WeightUpperLimit}] 内");
+                }
+                // 情况3: 新规则完全包含现有规则
+                else if (rule.WeightLowerLimit <= existingRule.WeightLowerLimit &&
+                         existingRule.WeightUpperLimit <= rule.WeightUpperLimit)
+                {
+                    weightRangeOverlap = true;
+                    Logger.Debug($"规则ID={existingRule.Id} 重量范围重叠: 新规则范围 [{rule.WeightLowerLimit}-{rule.WeightUpperLimit}] 完全包含现有规则范围 [{existingRule.WeightLowerLimit}-{existingRule.WeightUpperLimit}]");
+                }
+
+                if (!weightRangeOverlap)
+                {
+                    Logger.Debug($"规则ID={existingRule.Id} 重量范围不重叠，跳过");
+                    continue;
+                }
+
+                // 如果所有条件都匹配，则规则重复
+                Logger.Info($"发现重复规则: ID={existingRule.Id}, 版面={existingRule.Version}, 鸡舍={existingRule.ChickenHouse ?? "未指定"}, 客户名={existingRule.CustomerName ?? "未指定"}, 重量范围=[{existingRule.WeightLowerLimit}-{existingRule.WeightUpperLimit}]");
+                return true;
+            }
+
+            Logger.Debug("未发现重复规则");
+            return false;
         }
 
         /// <summary>
@@ -66,20 +165,96 @@ namespace WindowsFormsApp1
         /// <returns>如果重复返回true，否则返回false</returns>
         public bool IsSpecialRuleConditionDuplicate(ProductRule rule, SpecialRuleCondition condition)
         {
+            Logger.Debug($"开始检查特殊规则条件是否重复: 鸡舍={condition.ChickenHouse ?? "未指定"}, 重量范围=[{condition.WeightLowerLimit}-{condition.WeightUpperLimit}]");
+
             if (rule == null || rule.SpecialRules == null)
             {
+                Logger.Debug("主规则为空或没有特殊规则，不存在重复");
                 return false;
             }
 
-            // 检查是否有相同鸡舍号和重量范围重叠的特殊规则条件
-            return rule.SpecialRules.Any(c =>
-                c != condition && // 排除自身（引用比较）
-                (string.IsNullOrEmpty(c.ChickenHouse) || string.IsNullOrEmpty(condition.ChickenHouse) || c.ChickenHouse == condition.ChickenHouse) && // 相同鸡舍号或任一为空
-                // 重量范围重叠
-                ((c.WeightLowerLimit <= condition.WeightLowerLimit && condition.WeightLowerLimit <= c.WeightUpperLimit) ||
-                 (c.WeightLowerLimit <= condition.WeightUpperLimit && condition.WeightUpperLimit <= c.WeightUpperLimit) ||
-                 (condition.WeightLowerLimit <= c.WeightLowerLimit && c.WeightUpperLimit <= condition.WeightUpperLimit))
-            );
+            Logger.Debug($"主规则ID={rule.Id}，特殊规则数量={rule.SpecialRules.Count}");
+
+            int index = 0;
+            foreach (var existingCondition in rule.SpecialRules)
+            {
+                index++;
+
+                // 排除自身（引用比较）
+                if (existingCondition == condition)
+                {
+                    Logger.Debug($"特殊规则 #{index} 是自身，跳过");
+                    continue;
+                }
+
+                // 检查鸡舍号是否匹配
+                // 如果两个条件都指定了鸡舍号，则必须完全相同才匹配
+                // 如果两个条件都未指定鸡舍号，则匹配
+                // 如果一个条件指定了鸡舍号，另一个未指定，则不匹配
+                bool chickenHouseMatch;
+                if (string.IsNullOrEmpty(existingCondition.ChickenHouse) && string.IsNullOrEmpty(condition.ChickenHouse))
+                {
+                    // 两者都没有指定鸡舍号，匹配
+                    chickenHouseMatch = true;
+                    Logger.Debug($"特殊规则 #{index} 鸡舍号比较: 两个条件都未指定鸡舍号，匹配结果=true");
+                }
+                else if (!string.IsNullOrEmpty(existingCondition.ChickenHouse) && !string.IsNullOrEmpty(condition.ChickenHouse))
+                {
+                    // 两者都指定了鸡舍号，必须完全相同
+                    chickenHouseMatch = (existingCondition.ChickenHouse == condition.ChickenHouse);
+                    Logger.Debug($"特殊规则 #{index} 鸡舍号比较: 现有条件鸡舍号={existingCondition.ChickenHouse}, 新条件鸡舍号={condition.ChickenHouse}, 匹配结果={chickenHouseMatch}");
+                }
+                else
+                {
+                    // 一个条件指定了鸡舍号，另一个未指定，不匹配
+                    chickenHouseMatch = false;
+                    Logger.Debug($"特殊规则 #{index} 鸡舍号比较: 现有条件鸡舍号={existingCondition.ChickenHouse ?? "未指定"}, 新条件鸡舍号={condition.ChickenHouse ?? "未指定"}, 匹配结果=false (一个有鸡舍号，一个没有)");
+                }
+
+                if (!chickenHouseMatch)
+                {
+                    Logger.Debug($"特殊规则 #{index} 鸡舍号不匹配，跳过");
+                    continue;
+                }
+
+                // 检查重量范围是否重叠
+                bool weightRangeOverlap = false;
+
+                // 情况1: 新条件的下限在现有条件的范围内
+                if (existingCondition.WeightLowerLimit <= condition.WeightLowerLimit &&
+                    condition.WeightLowerLimit <= existingCondition.WeightUpperLimit)
+                {
+                    weightRangeOverlap = true;
+                    Logger.Debug($"特殊规则 #{index} 重量范围重叠: 新条件下限 {condition.WeightLowerLimit} 在现有条件范围 [{existingCondition.WeightLowerLimit}-{existingCondition.WeightUpperLimit}] 内");
+                }
+                // 情况2: 新条件的上限在现有条件的范围内
+                else if (existingCondition.WeightLowerLimit <= condition.WeightUpperLimit &&
+                         condition.WeightUpperLimit <= existingCondition.WeightUpperLimit)
+                {
+                    weightRangeOverlap = true;
+                    Logger.Debug($"特殊规则 #{index} 重量范围重叠: 新条件上限 {condition.WeightUpperLimit} 在现有条件范围 [{existingCondition.WeightLowerLimit}-{existingCondition.WeightUpperLimit}] 内");
+                }
+                // 情况3: 新条件完全包含现有条件
+                else if (condition.WeightLowerLimit <= existingCondition.WeightLowerLimit &&
+                         existingCondition.WeightUpperLimit <= condition.WeightUpperLimit)
+                {
+                    weightRangeOverlap = true;
+                    Logger.Debug($"特殊规则 #{index} 重量范围重叠: 新条件范围 [{condition.WeightLowerLimit}-{condition.WeightUpperLimit}] 完全包含现有条件范围 [{existingCondition.WeightLowerLimit}-{existingCondition.WeightUpperLimit}]");
+                }
+
+                if (!weightRangeOverlap)
+                {
+                    Logger.Debug($"特殊规则 #{index} 重量范围不重叠，跳过");
+                    continue;
+                }
+
+                // 如果所有条件都匹配，则特殊规则条件重复
+                Logger.Info($"发现重复的特殊规则条件: 鸡舍={existingCondition.ChickenHouse ?? "未指定"}, 重量范围=[{existingCondition.WeightLowerLimit}-{existingCondition.WeightUpperLimit}]");
+                return true;
+            }
+
+            Logger.Debug("未发现重复的特殊规则条件");
+            return false;
         }
 
         /// <summary>
