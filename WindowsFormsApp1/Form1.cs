@@ -447,7 +447,7 @@ namespace WindowsFormsApp1
                 }
 
                 // 解析消息
-                // 格式：品类|鸡舍|大标签数量|版面状态|二维码
+                // 格式：品类|鸡舍|大标签数量|版面状态|客户名
                 var parts = message.Split(new[] { '|' }, StringSplitOptions.None);
                 Logger.Debug($"消息解析为 {parts.Length} 个部分");
 
@@ -456,11 +456,10 @@ namespace WindowsFormsApp1
                 string chickenHouse = parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1] : null;
                 string tagQuantity = parts.Length > 2 ? parts[2] : null;
                 string panelStatus = parts.Length > 3 ? parts[3] : null;
-                string qrCode = parts.Length > 4 && !string.IsNullOrWhiteSpace(parts[4]) && !parts[4].Equals("null", StringComparison.OrdinalIgnoreCase) ? parts[4] : null;
-                string customerName = parts.Length > 5 && !string.IsNullOrWhiteSpace(parts[5]) ? parts[5] : null;
+                string customerName = parts.Length > 4 && !string.IsNullOrWhiteSpace(parts[4]) && !parts[4].Equals("null", StringComparison.OrdinalIgnoreCase) ? parts[4] : null;
 
                 // 记录接收到的消息
-                Logger.Info($"接收到消息: 品类={category}, 鸡舍={chickenHouse}, 标签数量={tagQuantity}, 版面状态={panelStatus}, 二维码={qrCode}, 客户名={customerName}");
+                Logger.Info($"接收到消息: 品类={category}, 鸡舍={chickenHouse}, 标签数量={tagQuantity}, 版面状态={panelStatus}, 客户名={customerName}");
                 OnLogMessage($"接收到消息: 品类={category}, 鸡舍={chickenHouse}, 版面状态={panelStatus}");
 
                 // 如果没有品类，无法处理
@@ -520,9 +519,9 @@ namespace WindowsFormsApp1
                 }
                 else
                 {
-                    Logger.Debug($"未找到匹配规则，尝试使用旧的模板方式处理: 品类={category}, 鸡舍={chickenHouse}, 版面状态={panelStatus}");
+                    Logger.Debug($"未找到匹配规则,品类={category}, 鸡舍={chickenHouse}, 版面状态={panelStatus}");
                     // 如果没有找到匹配的规则，尝试使用旧的模板方式
-                    ProcessMessageWithLegacyMethod(category, chickenHouse, panelStatus, weightStr);
+                    //ProcessMessageWithLegacyMethod(category, chickenHouse, panelStatus, weightStr);
                 }
             }
             catch (Exception ex)
