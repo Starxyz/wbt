@@ -478,8 +478,18 @@ namespace WindowsFormsApp1
                 // 如果没有品类，无法处理
                 if (string.IsNullOrWhiteSpace(category))
                 {
+                    string rejectReason = "消息中缺少品类信息，无法确定打印模板";
                     Logger.Warn("消息中缺少品类信息，无法处理");
-                    OnLogMessage("消息中缺少品类信息，无法处理");
+                    OnLogMessage($"不执行打印，原因: {rejectReason}");
+                    return;
+                }
+
+                // 检查版面状态，如果为0则不打印
+                if (panelStatus == "0")
+                {
+                    string rejectReason = "版面状态为0，表示不需要打印";
+                    Logger.Debug("版面状态为0，不执行打印");
+                    OnLogMessage($"不执行打印，原因: {rejectReason}");
                     return;
                 }
 
@@ -493,8 +503,9 @@ namespace WindowsFormsApp1
                                      CultureInfo.InvariantCulture,
                                      out double weight))
                 {
+                    string rejectReason = $"无法获取有效重量值: {weightStr}，请检查称重设备连接";
                     Logger.Warn($"无法获取有效重量: {weightStr}");
-                    OnLogMessage($"无法获取有效重量: {weightStr}，不执行打印");
+                    OnLogMessage($"不执行打印，原因: {rejectReason}");
                     return;
                 }
 
@@ -510,8 +521,9 @@ namespace WindowsFormsApp1
                     // 检查是否拒绝打印
                     if (matchedRule.RejectPrint)
                     {
+                        string rejectReason = $"规则ID={matchedRule.Id}, 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 重量范围=[{matchedRule.WeightLowerLimit}-{matchedRule.WeightUpperLimit}]";
                         Logger.Info($"根据规则 {matchedRule.Id} 拒绝打印: 品类={category}, 鸡舍={chickenHouse}, 重量={weight}");
-                        OnLogMessage($"根据规则拒绝打印: 版面={panelStatus}, 重量={weight}");
+                        OnLogMessage($"根据规则拒绝打印: 版面={panelStatus}, 重量={weight}, 原因: {rejectReason}");
                         return;
                     }
 
@@ -532,7 +544,9 @@ namespace WindowsFormsApp1
                 }
                 else
                 {
+                    string rejectReason = $"未找到匹配规则，品类={category}, 鸡舍={chickenHouse ?? "未指定"}, 客户名={customerName ?? "未指定"}, 重量={weight}";
                     Logger.Debug($"未找到匹配规则,品类={category}, 鸡舍={chickenHouse}, 版面状态={panelStatus}");
+                    OnLogMessage($"不执行打印，原因: {rejectReason}");
                     // 如果没有找到匹配的规则，尝试使用旧的模板方式
                     //ProcessMessageWithLegacyMethod(category, chickenHouse, panelStatus, weightStr);
                 }
@@ -562,7 +576,9 @@ namespace WindowsFormsApp1
 
                 if (status == "0")
                 {
+                    string rejectReason = "版面状态为0，表示不需要打印";
                     Logger.Debug("版面状态为0，不执行打印");
+                    OnLogMessage($"不执行打印，原因: {rejectReason}");
                     return;
                 }
 
@@ -574,7 +590,9 @@ namespace WindowsFormsApp1
                 // ③ xmyjpxjd360 + slot 无效 → 不打印
                 if (key.Equals("xmyjpxjd360", StringComparison.OrdinalIgnoreCase) && !hasSlot)
                 {
+                    string rejectReason = "品类为xmyjpxjd360但鸡舍信息无效，此品类需要有效的鸡舍信息";
                     Logger.Debug("品类为xmyjpxjd360且鸡舍无效，不执行打印");
+                    OnLogMessage($"不执行打印，原因: {rejectReason}");
                     return;
                 }
 
@@ -593,8 +611,9 @@ namespace WindowsFormsApp1
                                          CultureInfo.InvariantCulture,
                                          out double w))
                     {
+                        string rejectReason = $"无法解析重量值: {weightStr}，请检查重量数据格式";
                         Logger.Warn($"无法解析重量: {weightStr}");
-                        OnLogMessage($"无法解析重量: {weightStr}，不执行打印");
+                        OnLogMessage($"不执行打印，原因: {rejectReason}");
                         return;
                     }
 
@@ -622,8 +641,9 @@ namespace WindowsFormsApp1
                     }
                     else
                     {
+                        string rejectReason = $"重量 {w} 不在任何指定区间内 (有效区间: [20.5-21.1], [22.0-22.4], [23.9-24.1], [15.8-16.6])";
                         Logger.Debug($"重量 {w} 不在任何指定区间内，不执行打印");
-                        OnLogMessage($"重量 {w} 不在指定区间内，不执行打印");
+                        OnLogMessage($"不执行打印，原因: {rejectReason}");
                         return;
                     }                // 不在三段区间 → 不打印
                 }
@@ -675,8 +695,9 @@ namespace WindowsFormsApp1
             }
             else
             {
+                string rejectReason = $"未找到匹配的打印模板: {key}，请检查模板配置";
                 Logger.Warn($"未找到模板: {key}");
-                OnLogMessage($"未找到模板: {key}，无法执行打印");
+                OnLogMessage($"不执行打印，原因: {rejectReason}");
             }
         }
 
