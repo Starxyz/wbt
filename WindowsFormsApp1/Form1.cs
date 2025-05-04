@@ -456,7 +456,20 @@ namespace WindowsFormsApp1
                 string chickenHouse = parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1] : null;
                 string tagQuantity = parts.Length > 2 ? parts[2] : null;
                 string panelStatus = parts.Length > 3 ? parts[3] : null;
-                string customerName = parts.Length > 4 && !string.IsNullOrWhiteSpace(parts[4]) && !parts[4].Equals("null", StringComparison.OrdinalIgnoreCase) ? parts[4] : null;
+
+                // 提取客户名，如果长度大于20，则设置为null
+                string customerName = null;
+                if (parts.Length > 4 && !string.IsNullOrWhiteSpace(parts[4]) && !parts[4].Equals("null", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (parts[4].Length <= 20)
+                    {
+                        customerName = parts[4];
+                    }
+                    else
+                    {
+                        Logger.Warn($"客户名长度超过20个字符，已忽略: {parts[4]}");
+                    }
+                }
 
                 // 记录接收到的消息
                 Logger.Info($"接收到消息: 品类={category}, 鸡舍={chickenHouse}, 标签数量={tagQuantity}, 版面状态={panelStatus}, 客户名={customerName}");
