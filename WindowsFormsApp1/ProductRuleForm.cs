@@ -596,7 +596,11 @@ namespace WindowsFormsApp1
             if (_currentRule != null)
             {
                 _currentRule.RejectPrint = chkRejectPrint.Checked;
-                Logger.Debug($"拒绝打印状态已更改为: {chkRejectPrint.Checked}");
+
+                // 保存更改
+                _ruleManager.UpdateRule(_currentRule);
+
+                Logger.Debug($"拒绝打印状态已更改为: {chkRejectPrint.Checked} 并已保存");
             }
         }
 
@@ -627,6 +631,10 @@ namespace WindowsFormsApp1
                         Logger.Info("已清空特殊规则条件");
                     }
                 }
+
+                // 保存更改
+                _ruleManager.UpdateRule(_currentRule);
+                Logger.Debug($"启用特殊规则状态已保存");
             }
         }
 
@@ -637,8 +645,43 @@ namespace WindowsFormsApp1
             // 如果正在加载规则，不处理CheckedChanged事件
             if (_isLoading) return;
 
-            // 记录特殊规则的拒绝打印状态变化
-            Logger.Debug($"特殊规则拒绝打印状态已更改为: {chkSpecialRejectPrint.Checked}");
+            // 检查是否有选中的特殊规则
+            if (_currentRule != null && dgvSpecialRules.SelectedRows.Count > 0)
+            {
+                var selectedCondition = dgvSpecialRules.SelectedRows[0].DataBoundItem as SpecialRuleCondition;
+                if (selectedCondition != null)
+                {
+                    // 更新特殊规则的拒绝打印状态
+                    selectedCondition.RejectPrint = chkSpecialRejectPrint.Checked;
+
+                    // 保存更改
+                    _ruleManager.UpdateRule(_currentRule);
+
+                    // 刷新特殊规则表格以显示更新后的状态
+                    _specialRuleBindingList = new BindingList<SpecialRuleCondition>(_currentRule.SpecialRules);
+                    dgvSpecialRules.DataSource = _specialRuleBindingList;
+
+                    // 重新选择之前选中的行
+                    if (dgvSpecialRules.Rows.Count > 0)
+                    {
+                        for (int i = 0; i < dgvSpecialRules.Rows.Count; i++)
+                        {
+                            var condition = dgvSpecialRules.Rows[i].DataBoundItem as SpecialRuleCondition;
+                            if (condition == selectedCondition)
+                            {
+                                dgvSpecialRules.Rows[i].Selected = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    Logger.Debug($"特殊规则拒绝打印状态已更改为: {chkSpecialRejectPrint.Checked} 并已保存");
+                }
+            }
+            else
+            {
+                Logger.Debug($"特殊规则拒绝打印状态已更改为: {chkSpecialRejectPrint.Checked}，但没有选中的特殊规则，未保存");
+            }
         }
 
         /// <summary>
@@ -669,6 +712,34 @@ namespace WindowsFormsApp1
             }
 
             Logger.Debug($"未找到ID为 {ruleId} 的规则");
+        }
+
+        /// <summary>
+        /// 特殊规则表格选择变更事件处理程序
+        /// </summary>
+        private void dgvSpecialRules_SelectionChanged(object sender, EventArgs e)
+        {
+            if (dgvSpecialRules.SelectedRows.Count > 0)
+            {
+                var selectedCondition = dgvSpecialRules.SelectedRows[0].DataBoundItem as SpecialRuleCondition;
+                if (selectedCondition != null)
+                {
+                    // 设置加载标志，防止触发CheckedChanged事件
+                    _isLoading = true;
+
+                    // 更新特殊规则输入框
+                    txtSpecialChickenHouse.Text = selectedCondition.ChickenHouse;
+                    txtSpecialWeightLowerLimit.Text = selectedCondition.WeightLowerLimit.ToString();
+                    txtSpecialWeightUpperLimit.Text = selectedCondition.WeightUpperLimit.ToString();
+                    txtSpecialQRCode.Text = selectedCondition.QRCode;
+                    chkSpecialRejectPrint.Checked = selectedCondition.RejectPrint;
+
+                    // 重置加载标志
+                    _isLoading = false;
+
+                    Logger.Debug($"已选择特殊规则条件: 鸡舍={selectedCondition.ChickenHouse ?? "未指定"}, 重量范围=[{selectedCondition.WeightLowerLimit}-{selectedCondition.WeightUpperLimit}]");
+                }
+            }
         }
     }
 }

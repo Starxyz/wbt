@@ -456,6 +456,7 @@ namespace WindowsFormsApp1
             this.dgvSpecialRules.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
             this.dgvSpecialRules.Size = new System.Drawing.Size(400, 223);
             this.dgvSpecialRules.TabIndex = 0;
+            this.dgvSpecialRules.SelectionChanged += new System.EventHandler(this.dgvSpecialRules_SelectionChanged);
             //
             // ProductRuleForm
             //
