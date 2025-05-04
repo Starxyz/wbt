@@ -288,6 +288,11 @@ namespace WindowsFormsApp1
             }
         }
 
+        // 日志最大行数，超过这个数量将清除旧日志
+        private const int MAX_LOG_LINES = 1000;
+        // 当日志行数超过这个阈值时，将清除到这个数量
+        private const int CLEAN_TO_LOG_LINES = 800;
+
         private void OnLogMessage(string message)
         {
             if (txtLog.InvokeRequired)
@@ -296,7 +301,35 @@ namespace WindowsFormsApp1
                 return;
             }
 
+            // 添加新日志
             txtLog.AppendText($"{DateTime.Now:HH:mm:ss} {message}\r\n");
+
+            // 检查日志行数是否超过最大限制
+            if (txtLog.Lines.Length > MAX_LOG_LINES)
+            {
+                // 计算需要保留的文本
+                int linesToRemove = txtLog.Lines.Length - CLEAN_TO_LOG_LINES;
+                if (linesToRemove > 0)
+                {
+                    // 找到要删除的文本的结束位置
+                    int removeEndPos = 0;
+                    for (int i = 0; i < linesToRemove; i++)
+                    {
+                        removeEndPos += txtLog.Lines[i].Length + 2; // +2 for \r\n
+                    }
+
+                    // 删除旧日志
+                    txtLog.Select(0, removeEndPos);
+                    txtLog.SelectedText = "";
+
+                    // 添加一条提示信息
+                    txtLog.AppendText($"{DateTime.Now:HH:mm:ss} [系统] 已清除 {linesToRemove} 行旧日志以提高性能\r\n");
+                }
+            }
+
+            // 滚动到最后一行
+            txtLog.SelectionStart = txtLog.Text.Length;
+            txtLog.ScrollToCaret();
         }
 
         private void OnServerStatusChanged(bool started)
@@ -447,32 +480,31 @@ namespace WindowsFormsApp1
                 }
 
                 // 解析消息
-                // 格式：品类|鸡舍|大标签数量|版面状态|客户名
+                // 格式：品类|鸡舍|版面状态|客户名
                 var parts = message.Split(new[] { '|' }, StringSplitOptions.None);
                 Logger.Debug($"消息解析为 {parts.Length} 个部分");
 
                 // 提取消息中的信息
                 string category = parts.Length > 0 ? parts[0] : null;
                 string chickenHouse = parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1] : null;
-                string tagQuantity = parts.Length > 2 ? parts[2] : null;
-                string panelStatus = parts.Length > 3 ? parts[3] : null;
+                string panelStatus = parts.Length > 2 ? parts[2] : null;
 
                 // 提取客户名，如果长度大于20，则设置为null
                 string customerName = null;
-                if (parts.Length > 4 && !string.IsNullOrWhiteSpace(parts[4]) && !parts[4].Equals("null", StringComparison.OrdinalIgnoreCase))
+                if (parts.Length > 3 && !string.IsNullOrWhiteSpace(parts[3]) && !parts[3].Equals("null", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (parts[4].Length <= 20)
+                    if (parts[3].Length <= 20)
                     {
-                        customerName = parts[4];
+                        customerName = parts[3];
                     }
                     else
                     {
-                        Logger.Warn($"客户名长度超过20个字符，已忽略: {parts[4]}");
+                        Logger.Warn($"客户名长度超过20个字符，已忽略: {parts[3]}");
                     }
                 }
 
                 // 记录接收到的消息
-                Logger.Info($"接收到消息: 品类={category}, 鸡舍={chickenHouse}, 标签数量={tagQuantity}, 版面状态={panelStatus}, 客户名={customerName}");
+                Logger.Info($"接收到消息: 品类={category}, 鸡舍={chickenHouse}, 版面状态={panelStatus}, 客户名={customerName}");
                 OnLogMessage($"接收到消息: 品类={category}, 鸡舍={chickenHouse}, 版面状态={panelStatus}");
 
                 // 如果没有品类，无法处理
@@ -511,27 +543,28 @@ namespace WindowsFormsApp1
 
                 // 使用新的产品规则管理器查找匹配的规则
                 // 注意：我们使用category（品类）作为版面信息，而不是panelStatus
-                Logger.Debug($"开始查找匹配规则: 品类={category}, 鸡舍={chickenHouse}, 客户名={customerName}, 重量={weight}");
+                Logger.Info($"开始查找匹配规则: 品类={category}, 鸡舍={chickenHouse}, 客户名={customerName}, 重量={weight}");
+                OnLogMessage($"开始查找匹配规则: 品类={category}, 鸡舍={chickenHouse ?? "未指定"}, 客户名={customerName ?? "未指定"}, 重量={weight}");
                 ProductRule matchedRule = _productRuleManager.FindMatchingRule(category, chickenHouse, customerName, weight);
 
                 if (matchedRule != null)
                 {
-                    Logger.Debug($"找到匹配规则: ID={matchedRule.Id}, 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}");
+                    Logger.Info($"找到匹配规则: ID={matchedRule.Id}, 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}");
 
                     // 检查是否拒绝打印
                     if (matchedRule.RejectPrint)
                     {
                         string rejectReason = $"规则ID={matchedRule.Id}, 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 重量范围=[{matchedRule.WeightLowerLimit}-{matchedRule.WeightUpperLimit}]";
                         Logger.Info($"根据规则 {matchedRule.Id} 拒绝打印: 品类={category}, 鸡舍={chickenHouse}, 重量={weight}");
-                        OnLogMessage($"根据规则拒绝打印: 版面={panelStatus}, 重量={weight}, 原因: {rejectReason}");
+                        OnLogMessage($"根据规则拒绝打印: 品类={category}, 鸡舍={chickenHouse ?? "未指定"}, 重量={weight}, 原因: {rejectReason}");
                         return;
                     }
 
                     // 打印
                     string traceabilityCode = GenerateTraceabilityCode();
-                    Logger.Debug($"生成追溯码: {traceabilityCode}");
+                    Logger.Info($"生成追溯码: {traceabilityCode}");
 
-                    Logger.Debug($"开始执行打印: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 重量={weightStr}, 二维码={matchedRule.QRCode}");
+                    Logger.Info($"开始执行打印: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 重量={weightStr}, 二维码={matchedRule.QRCode}");
                     Pint_model(1,
                                matchedRule.ProductName,
                                matchedRule.Specification,
@@ -540,13 +573,25 @@ namespace WindowsFormsApp1
                                matchedRule.QRCode);
 
                     Logger.Info($"使用规则 {matchedRule.Id} 打印: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 二维码={matchedRule.QRCode}, 重量={weightStr}");
-                    OnLogMessage($"打印成功: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}");
+                    OnLogMessage($"打印成功: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 重量={weightStr}");
                 }
                 else
                 {
+                    // 获取匹配失败的详细原因
+                    string failureReason = GetMatchingFailureReason(category, chickenHouse, customerName, weight);
+
                     string rejectReason = $"未找到匹配规则，品类={category}, 鸡舍={chickenHouse ?? "未指定"}, 客户名={customerName ?? "未指定"}, 重量={weight}";
-                    Logger.Debug($"未找到匹配规则,品类={category}, 鸡舍={chickenHouse}, 版面状态={panelStatus}");
-                    OnLogMessage($"不执行打印，原因: {rejectReason}");
+                    Logger.Info($"未找到匹配规则: 品类={category}, 鸡舍={chickenHouse ?? "未指定"}, 客户名={customerName ?? "未指定"}, 重量={weight}");
+
+                    // 显示更详细的失败原因到界面
+                    OnLogMessage($"【匹配失败】不执行打印，原因: {rejectReason}");
+
+                    // 如果有详细的失败原因，也显示出来
+                    if (!string.IsNullOrEmpty(failureReason))
+                    {
+                        OnLogMessage($"【详细原因】{failureReason}");
+                    }
+
                     // 如果没有找到匹配的规则，尝试使用旧的模板方式
                     //ProcessMessageWithLegacyMethod(category, chickenHouse, panelStatus, weightStr);
                 }
@@ -1085,6 +1130,162 @@ namespace WindowsFormsApp1
             }
             btnModbusControl.Enabled = true;
 
+        }
+
+        /// <summary>
+        /// 获取匹配失败的详细原因
+        /// </summary>
+        /// <param name="category">品类</param>
+        /// <param name="chickenHouse">鸡舍号</param>
+        /// <param name="customerName">客户名</param>
+        /// <param name="weight">重量</param>
+        /// <returns>详细的失败原因</returns>
+        private string GetMatchingFailureReason(string category, string chickenHouse, string customerName, double weight)
+        {
+            // 检查是否有该品类的规则
+            var allRules = _productRuleManager.GetAllRules();
+            var categoryRules = allRules.Where(r => r.Version == category).ToList();
+
+            if (categoryRules.Count == 0)
+            {
+                return $"系统中没有品类为 {category} 的规则，请先添加相关规则";
+            }
+
+            // 检查鸡舍号匹配情况
+            if (!string.IsNullOrEmpty(chickenHouse))
+            {
+                var chickenHouseRules = categoryRules.Where(r => r.ChickenHouse == chickenHouse).ToList();
+                var nullChickenHouseRules = categoryRules.Where(r => string.IsNullOrEmpty(r.ChickenHouse)).ToList();
+
+                if (chickenHouseRules.Count == 0 && nullChickenHouseRules.Count == 0)
+                {
+                    var availableChickenHouses = categoryRules
+                        .Where(r => !string.IsNullOrEmpty(r.ChickenHouse))
+                        .Select(r => r.ChickenHouse)
+                        .Distinct()
+                        .ToList();
+
+                    if (availableChickenHouses.Any())
+                    {
+                        return $"没有鸡舍号为 {chickenHouse} 的规则，当前品类有以下鸡舍号的规则: {string.Join(", ", availableChickenHouses)}";
+                    }
+                    else
+                    {
+                        return $"没有鸡舍号为 {chickenHouse} 的规则，也没有通用鸡舍号规则";
+                    }
+                }
+
+                // 如果有鸡舍号匹配的规则，继续检查客户名
+                var matchingRules = chickenHouseRules.Any() ? chickenHouseRules : nullChickenHouseRules;
+
+                // 检查客户名匹配情况
+                if (!string.IsNullOrEmpty(customerName))
+                {
+                    string trimmedCustomerName = customerName.Trim();
+                    var customerRules = matchingRules.Where(r =>
+                        !string.IsNullOrEmpty(r.CustomerName) &&
+                        r.CustomerName.Trim() == trimmedCustomerName
+                    ).ToList();
+
+                    var nullCustomerRules = matchingRules.Where(r => string.IsNullOrEmpty(r.CustomerName)).ToList();
+
+                    if (customerRules.Count == 0 && nullCustomerRules.Count == 0)
+                    {
+                        var availableCustomerNames = matchingRules
+                            .Where(r => !string.IsNullOrEmpty(r.CustomerName))
+                            .Select(r => r.CustomerName.Trim())
+                            .Distinct()
+                            .ToList();
+
+                        if (availableCustomerNames.Any())
+                        {
+                            return $"没有客户名为 {trimmedCustomerName} 的规则，当前条件下有以下客户名的规则: {string.Join(", ", availableCustomerNames)}";
+                        }
+                        else
+                        {
+                            return $"没有客户名为 {trimmedCustomerName} 的规则，也没有通用客户名规则";
+                        }
+                    }
+
+                    // 如果有客户名匹配的规则，继续检查重量
+                    matchingRules = customerRules.Any() ? customerRules : nullCustomerRules;
+                }
+                else
+                {
+                    // 如果没有提供客户名，只保留那些没有指定客户名的规则
+                    var nullCustomerRules = matchingRules.Where(r => string.IsNullOrEmpty(r.CustomerName)).ToList();
+
+                    if (nullCustomerRules.Count == 0)
+                    {
+                        var availableCustomerNames = matchingRules
+                            .Where(r => !string.IsNullOrEmpty(r.CustomerName))
+                            .Select(r => r.CustomerName.Trim())
+                            .Distinct()
+                            .ToList();
+
+                        if (availableCustomerNames.Any())
+                        {
+                            return $"没有通用客户名规则，当前条件下需要指定以下客户名之一: {string.Join(", ", availableCustomerNames)}";
+                        }
+                        else
+                        {
+                            return "没有通用客户名规则，所有规则都需要指定客户名";
+                        }
+                    }
+
+                    matchingRules = nullCustomerRules;
+                }
+
+                // 检查重量范围
+                var weightRules = matchingRules.Where(r =>
+                    r.WeightLowerLimit <= weight && weight <= r.WeightUpperLimit
+                ).ToList();
+
+                if (weightRules.Count == 0)
+                {
+                    var availableWeightRanges = matchingRules
+                        .Select(r => $"[{r.WeightLowerLimit}-{r.WeightUpperLimit}]")
+                        .Distinct()
+                        .ToList();
+
+                    if (availableWeightRanges.Any())
+                    {
+                        return $"重量 {weight} 不在任何规则的范围内，当前条件下有以下重量范围的规则: {string.Join(", ", availableWeightRanges)}";
+                    }
+                    else
+                    {
+                        return $"没有找到适用的重量范围规则";
+                    }
+                }
+            }
+            else
+            {
+                // 如果没有提供鸡舍号，只保留那些没有指定鸡舍号的规则
+                var nullChickenHouseRules = categoryRules.Where(r => string.IsNullOrEmpty(r.ChickenHouse)).ToList();
+
+                if (nullChickenHouseRules.Count == 0)
+                {
+                    var availableChickenHouses = categoryRules
+                        .Where(r => !string.IsNullOrEmpty(r.ChickenHouse))
+                        .Select(r => r.ChickenHouse)
+                        .Distinct()
+                        .ToList();
+
+                    if (availableChickenHouses.Any())
+                    {
+                        return $"没有通用鸡舍号规则，需要指定以下鸡舍号之一: {string.Join(", ", availableChickenHouses)}";
+                    }
+                    else
+                    {
+                        return "没有通用鸡舍号规则，所有规则都需要指定鸡舍号";
+                    }
+                }
+
+                // 后续逻辑与上面类似，但为了简化，这里不再重复
+            }
+
+            // 如果没有找到具体原因，返回一个通用消息
+            return "没有找到匹配的规则，请检查品类、鸡舍号、客户名和重量是否符合已配置的规则";
         }
 
         public string GenerateTraceabilityCode()
