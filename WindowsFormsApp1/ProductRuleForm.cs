@@ -39,62 +39,71 @@ namespace WindowsFormsApp1
             // 设置主规则表格
             dgvRules.AutoGenerateColumns = false;
             dgvRules.Columns.Clear();
-            dgvRules.EditMode = DataGridViewEditMode.EditOnEnter;
+            dgvRules.EditMode = DataGridViewEditMode.EditProgrammatically;
+            dgvRules.ReadOnly = true;
 
             dgvRules.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "Id",
                 HeaderText = "序号",
-                Width = 50
+                Width = 50,
+                ReadOnly = true
             });
 
             dgvRules.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "Version",
                 HeaderText = "版面",
-                Width = 100
+                Width = 100,
+                ReadOnly = true
             });
 
             dgvRules.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "ProductName",
                 HeaderText = "品名",
-                Width = 150
+                Width = 150,
+                ReadOnly = true
             });
 
             dgvRules.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "Specification",
                 HeaderText = "规格",
-                Width = 150
+                Width = 150,
+                ReadOnly = true
             });
 
             dgvRules.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "ChickenHouse",
                 HeaderText = "鸡舍号",
-                Width = 80
+                Width = 80,
+                ReadOnly = true
             });
 
             dgvRules.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "CustomerName",
                 HeaderText = "客户名",
-                Width = 100
+                Width = 100,
+                ReadOnly = true
             });
 
             dgvRules.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "WeightLowerLimit",
                 HeaderText = "重量下限",
-                Width = 80
+                Width = 80,
+                ReadOnly = true
             });
 
             dgvRules.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "WeightUpperLimit",
                 HeaderText = "重量上限",
-                Width = 80
+                Width = 80,
+                ReadOnly = true
             });
 
             var rejectPrintColumn = new DataGridViewCheckBoxColumn
@@ -102,7 +111,7 @@ namespace WindowsFormsApp1
                 DataPropertyName = "RejectPrint",
                 HeaderText = "拒绝打印",
                 Width = 80,
-                ReadOnly = false
+                ReadOnly = true
             };
             dgvRules.Columns.Add(rejectPrintColumn);
 
@@ -110,7 +119,8 @@ namespace WindowsFormsApp1
             {
                 DataPropertyName = "QRCode",
                 HeaderText = "二维码",
-                Width = 100
+                Width = 100,
+                ReadOnly = true
             });
 
             var enableSpecialRulesColumn = new DataGridViewCheckBoxColumn
@@ -118,40 +128,46 @@ namespace WindowsFormsApp1
                 DataPropertyName = "EnableSpecialRules",
                 HeaderText = "启用特殊规则",
                 Width = 100,
-                ReadOnly = false
+                ReadOnly = true
             };
             dgvRules.Columns.Add(enableSpecialRulesColumn);
 
             // 设置特殊规则表格
             dgvSpecialRules.AutoGenerateColumns = false;
             dgvSpecialRules.Columns.Clear();
+            dgvSpecialRules.EditMode = DataGridViewEditMode.EditProgrammatically;
+            dgvSpecialRules.ReadOnly = true;
 
             dgvSpecialRules.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "ChickenHouse",
                 HeaderText = "鸡舍号",
-                Width = 80
+                Width = 80,
+                ReadOnly = true
             });
 
             dgvSpecialRules.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "WeightLowerLimit",
                 HeaderText = "重量下限",
-                Width = 80
+                Width = 80,
+                ReadOnly = true
             });
 
             dgvSpecialRules.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "WeightUpperLimit",
                 HeaderText = "重量上限",
-                Width = 80
+                Width = 80,
+                ReadOnly = true
             });
 
             dgvSpecialRules.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "QRCode",
                 HeaderText = "二维码",
-                Width = 100
+                Width = 100,
+                ReadOnly = true
             });
 
             var specialRejectPrintColumn = new DataGridViewCheckBoxColumn
@@ -159,7 +175,7 @@ namespace WindowsFormsApp1
                 DataPropertyName = "RejectPrint",
                 HeaderText = "拒绝打印",
                 Width = 80,
-                ReadOnly = false
+                ReadOnly = true
             };
             dgvSpecialRules.Columns.Add(specialRejectPrintColumn);
         }
@@ -171,6 +187,9 @@ namespace WindowsFormsApp1
                 _currentRule = dgvRules.SelectedRows[0].DataBoundItem as ProductRule;
                 if (_currentRule != null)
                 {
+                    // 设置加载标志，防止触发CheckedChanged事件
+                    _isLoading = true;
+
                     // 更新表单字段
                     txtVersion.Text = _currentRule.Version;
                     txtProductName.Text = _currentRule.ProductName;
@@ -182,6 +201,9 @@ namespace WindowsFormsApp1
                     chkRejectPrint.Checked = _currentRule.RejectPrint;
                     txtQRCode.Text = _currentRule.QRCode;
                     chkEnableSpecialRules.Checked = _currentRule.EnableSpecialRules;
+
+                    // 重置加载标志
+                    _isLoading = false;
 
                     // 更新特殊规则表格
                     _specialRuleBindingList = new BindingList<SpecialRuleCondition>(_currentRule.SpecialRules);
@@ -195,7 +217,14 @@ namespace WindowsFormsApp1
             }
             else
             {
+                // 设置加载标志，防止触发CheckedChanged事件
+                _isLoading = true;
+
                 ClearForm();
+
+                // 重置加载标志
+                _isLoading = false;
+
                 _currentRule = null;
                 btnUpdateRule.Enabled = false;
                 btnDeleteRule.Enabled = false;
@@ -353,8 +382,22 @@ namespace WindowsFormsApp1
 
                 Logger.Info($"更新了规则，ID: {_currentRule.Id}");
 
+                // 保存当前规则的ID，以便在刷新后重新选择
+                int currentRuleId = _currentRule.Id;
+                bool rejectPrintStatus = _currentRule.RejectPrint;
+
                 // 刷新列表
                 LoadRules();
+
+                // 重新选择之前的规则
+                SelectRuleById(currentRuleId);
+
+                // 确保拒绝打印状态与更新前一致
+                if (_currentRule != null)
+                {
+                    _currentRule.RejectPrint = rejectPrintStatus;
+                    chkRejectPrint.Checked = rejectPrintStatus;
+                }
             }
             catch (Exception ex)
             {
@@ -542,8 +585,14 @@ namespace WindowsFormsApp1
             dgvRules.ClearSelection();
         }
 
+        // 标志位，用于防止在加载规则时触发CheckedChanged事件
+        private bool _isLoading = false;
+
         private void chkRejectPrint_CheckedChanged(object sender, EventArgs e)
         {
+            // 如果正在加载规则，不处理CheckedChanged事件
+            if (_isLoading) return;
+
             if (_currentRule != null)
             {
                 _currentRule.RejectPrint = chkRejectPrint.Checked;
@@ -553,6 +602,9 @@ namespace WindowsFormsApp1
 
         private void chkEnableSpecialRules_CheckedChanged(object sender, EventArgs e)
         {
+            // 如果正在加载规则，不处理CheckedChanged事件
+            if (_isLoading) return;
+
             if (_currentRule != null)
             {
                 _currentRule.EnableSpecialRules = chkEnableSpecialRules.Checked;
@@ -578,78 +630,45 @@ namespace WindowsFormsApp1
             }
         }
 
-        private void dgvRules_CellContentClick(object sender, DataGridViewCellEventArgs e)
-        {
-            // 检查点击的是否是复选框列
-            if (e.RowIndex >= 0)
-            {
-                var rule = _ruleBindingList[e.RowIndex];
-
-                // 拒绝打印列
-                if (e.ColumnIndex == 7) // 根据列索引判断，可能需要调整
-                {
-                    rule.RejectPrint = !rule.RejectPrint;
-                    Logger.Debug($"表格中拒绝打印状态已更改为: {rule.RejectPrint}，规则ID: {rule.Id}");
-
-                    // 如果当前选中的规则就是被修改的规则，同步更新表单中的复选框
-                    if (_currentRule != null && _currentRule.Id == rule.Id)
-                    {
-                        chkRejectPrint.Checked = rule.RejectPrint;
-                    }
-
-                    // 立即保存更改
-                    _ruleManager.UpdateRule(rule);
-
-                    // 刷新表格
-                    dgvRules.Refresh();
-                }
-                // 启用特殊规则列
-                else if (e.ColumnIndex == 9) // 根据列索引判断，可能需要调整
-                {
-                    rule.EnableSpecialRules = !rule.EnableSpecialRules;
-                    Logger.Debug($"表格中启用特殊规则状态已更改为: {rule.EnableSpecialRules}，规则ID: {rule.Id}");
-
-                    // 如果当前选中的规则就是被修改的规则，同步更新表单中的复选框
-                    if (_currentRule != null && _currentRule.Id == rule.Id)
-                    {
-                        chkEnableSpecialRules.Checked = rule.EnableSpecialRules;
-                    }
-
-                    // 立即保存更改
-                    _ruleManager.UpdateRule(rule);
-
-                    // 刷新表格
-                    dgvRules.Refresh();
-                }
-            }
-        }
-
-        private void dgvSpecialRules_CellContentClick(object sender, DataGridViewCellEventArgs e)
-        {
-            // 检查点击的是否是复选框列，并且当前有选中的规则
-            if (e.RowIndex >= 0 && _currentRule != null)
-            {
-                var specialRule = _specialRuleBindingList[e.RowIndex];
-
-                // 拒绝打印列（假设是第5列，索引为4）
-                if (e.ColumnIndex == 4) // 根据列索引判断，可能需要调整
-                {
-                    specialRule.RejectPrint = !specialRule.RejectPrint;
-                    Logger.Debug($"特殊规则表格中拒绝打印状态已更改为: {specialRule.RejectPrint}，重量范围: [{specialRule.WeightLowerLimit}-{specialRule.WeightUpperLimit}]");
-
-                    // 立即保存更改
-                    _ruleManager.UpdateRule(_currentRule);
-
-                    // 刷新表格
-                    dgvSpecialRules.Refresh();
-                }
-            }
-        }
+        // 移除了表格单元格点击事件处理程序，因为表格已设置为只读
 
         private void chkSpecialRejectPrint_CheckedChanged(object sender, EventArgs e)
         {
+            // 如果正在加载规则，不处理CheckedChanged事件
+            if (_isLoading) return;
+
             // 记录特殊规则的拒绝打印状态变化
             Logger.Debug($"特殊规则拒绝打印状态已更改为: {chkSpecialRejectPrint.Checked}");
+        }
+
+        /// <summary>
+        /// 根据ID选择规则
+        /// </summary>
+        /// <param name="ruleId">要选择的规则ID</param>
+        private void SelectRuleById(int ruleId)
+        {
+            // 查找规则在DataGridView中的索引
+            for (int i = 0; i < dgvRules.Rows.Count; i++)
+            {
+                var rule = dgvRules.Rows[i].DataBoundItem as ProductRule;
+                if (rule != null && rule.Id == ruleId)
+                {
+                    // 选择该行
+                    dgvRules.ClearSelection();
+                    dgvRules.Rows[i].Selected = true;
+
+                    // 确保该行可见
+                    dgvRules.FirstDisplayedScrollingRowIndex = i;
+
+                    // 设置当前规则
+                    _currentRule = rule;
+
+                    Logger.Debug($"已重新选择规则，ID: {ruleId}");
+                    return;
+                }
+            }
+
+            Logger.Debug($"未找到ID为 {ruleId} 的规则");
         }
     }
 }

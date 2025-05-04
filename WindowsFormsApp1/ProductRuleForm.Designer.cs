@@ -88,7 +88,6 @@ namespace WindowsFormsApp1
             this.dgvRules.Size = new System.Drawing.Size(1158, 250);
             this.dgvRules.TabIndex = 0;
             this.dgvRules.SelectionChanged += new System.EventHandler(this.dgvRules_SelectionChanged);
-            this.dgvRules.CellContentClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.dgvRules_CellContentClick);
             //
             // grpRuleDetails
             //
@@ -457,7 +456,6 @@ namespace WindowsFormsApp1
             this.dgvSpecialRules.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
             this.dgvSpecialRules.Size = new System.Drawing.Size(400, 223);
             this.dgvSpecialRules.TabIndex = 0;
-            this.dgvSpecialRules.CellContentClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.dgvSpecialRules_CellContentClick);
             //
             // ProductRuleForm
             //
