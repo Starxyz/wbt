@@ -71,7 +71,7 @@
             this.txtLog.Name = "txtLog";
             this.txtLog.ReadOnly = true;
             this.txtLog.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
-            this.txtLog.Size = new System.Drawing.Size(460, 300);
+            this.txtLog.Size = new System.Drawing.Size(776, 468);
             this.txtLog.TabIndex = 2;
             //
             // lblTcpStatus
@@ -155,7 +155,7 @@
             //
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(484, 432);
+            this.ClientSize = new System.Drawing.Size(800, 600);
             this.Controls.Add(this.btnProductRules);
             this.Controls.Add(this.button1);
             this.Controls.Add(this.lblWeight);
@@ -168,7 +168,7 @@
             this.Controls.Add(this.btn_select_file);
             this.Controls.Add(this.btn_print);
             this.Name = "Form1";
-            this.Text = "Form1";
+            this.Text = "打印控制系统";
             this.ResumeLayout(false);
             this.PerformLayout();
 

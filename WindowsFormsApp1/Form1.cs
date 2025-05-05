@@ -507,6 +507,8 @@ namespace WindowsFormsApp1
                 Logger.Info($"接收到消息: 品类={category}, 鸡舍={chickenHouse}, 版面状态={panelStatus}, 客户名={customerName}");
                 OnLogMessage($"接收到消息: 品类={category}, 鸡舍={chickenHouse}, 版面状态={panelStatus}");
 
+
+
                 // 如果没有品类，无法处理
                 if (string.IsNullOrWhiteSpace(category))
                 {
@@ -550,6 +552,10 @@ namespace WindowsFormsApp1
                 if (matchedRule != null)
                 {
                     Logger.Info($"找到匹配规则: ID={matchedRule.Id}, 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}");
+                    // 记录匹配ID号，同时使用原始消息内容
+                    string logMessage = $"接收到的（消息：{message}，匹配ID号{matchedRule.Id}）";
+                    Logger.Info(logMessage);
+                    OnLogMessage(logMessage);
 
                     // 检查是否拒绝打印
                     if (matchedRule.RejectPrint)
@@ -585,6 +591,10 @@ namespace WindowsFormsApp1
 
                     // 显示更详细的失败原因到界面
                     OnLogMessage($"【匹配失败】不执行打印，原因: {rejectReason}");
+                    // 记录匹配失败，同时使用原始消息内容
+                    string logMessage = $"接收到的（消息：{message}，匹配ID号无）";
+                    Logger.Info(logMessage);
+                    OnLogMessage(logMessage);
 
                     // 如果有详细的失败原因，也显示出来
                     if (!string.IsNullOrEmpty(failureReason))
