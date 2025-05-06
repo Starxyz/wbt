@@ -592,7 +592,7 @@ namespace WindowsFormsApp1
                     // 显示更详细的失败原因到界面
                     OnLogMessage($"【匹配失败】不执行打印，原因: {rejectReason}");
                     // 记录匹配失败，同时使用原始消息内容
-                    string logMessage = $"接收到的（消息：{message}，匹配ID号无）";
+                    string logMessage = $"接收到的（消息：{message}，未匹配到规则）";
                     Logger.Info(logMessage);
                     OnLogMessage(logMessage);
 
