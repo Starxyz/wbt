@@ -52,9 +52,9 @@ namespace WindowsFormsApp1
         public double WeightUpperLimit { get; set; }
 
         /// <summary>
-        /// 是否拒绝打印
+        /// 是否允许打印（默认为 false，即不允许打印）
         /// </summary>
-        public bool RejectPrint { get; set; }
+        public bool AllowPrint { get; set; } = false;
 
         /// <summary>
         /// 二维码
@@ -98,8 +98,8 @@ namespace WindowsFormsApp1
         public string QRCode { get; set; }
 
         /// <summary>
-        /// 是否拒绝打印
+        /// 是否允许打印（默认为 false，即不允许打印）
         /// </summary>
-        public bool RejectPrint { get; set; }
+        public bool AllowPrint { get; set; } = false;
     }
 }

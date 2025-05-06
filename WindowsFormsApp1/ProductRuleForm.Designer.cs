@@ -183,7 +183,7 @@ namespace WindowsFormsApp1
             this.chkRejectPrint.Name = "chkRejectPrint";
             this.chkRejectPrint.Size = new System.Drawing.Size(89, 21);
             this.chkRejectPrint.TabIndex = 17;
-            this.chkRejectPrint.Text = "拒绝打印";
+            this.chkRejectPrint.Text = "允许打印";
             this.chkRejectPrint.UseVisualStyleBackColor = true;
             this.chkRejectPrint.CheckedChanged += new System.EventHandler(this.chkRejectPrint_CheckedChanged);
             //
@@ -392,7 +392,7 @@ namespace WindowsFormsApp1
             this.chkSpecialRejectPrint.Name = "chkSpecialRejectPrint";
             this.chkSpecialRejectPrint.Size = new System.Drawing.Size(89, 21);
             this.chkSpecialRejectPrint.TabIndex = 11;
-            this.chkSpecialRejectPrint.Text = "拒绝打印";
+            this.chkSpecialRejectPrint.Text = "允许打印";
             this.chkSpecialRejectPrint.UseVisualStyleBackColor = true;
             this.chkSpecialRejectPrint.CheckedChanged += new System.EventHandler(this.chkSpecialRejectPrint_CheckedChanged);
             //

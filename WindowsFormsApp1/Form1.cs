@@ -67,8 +67,8 @@ namespace WindowsFormsApp1
 
             LoadTemplates(); // 加载分类模板信息
 
-            // 初始化产品规则管理器
-            _productRuleManager = new ProductRuleManager();
+            // 初始化产品规则管理器，程序启动时重置所有规则的允许打印状态为不允许打印
+            _productRuleManager = new ProductRuleManager(resetAllowPrintStatus: true);
 
             // 使用Timer在UI初始化完成后执行自动启动操作
             System.Windows.Forms.Timer startupTimer = new System.Windows.Forms.Timer();
@@ -557,8 +557,8 @@ namespace WindowsFormsApp1
                     Logger.Info(logMessage);
                     OnLogMessage(logMessage);
 
-                    // 检查是否拒绝打印
-                    if (matchedRule.RejectPrint)
+                    // 检查是否允许打印
+                    if (!matchedRule.AllowPrint)
                     {
                         string rejectReason = $"规则ID={matchedRule.Id}, 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 重量范围=[{matchedRule.WeightLowerLimit}-{matchedRule.WeightUpperLimit}]";
                         Logger.Info($"根据规则 {matchedRule.Id} 拒绝打印: 品类={category}, 鸡舍={chickenHouse}, 重量={weight}");
@@ -1106,9 +1106,9 @@ namespace WindowsFormsApp1
             ProductRuleForm form = new ProductRuleForm();
             form.ShowDialog();
 
-            // 重新加载产品规则
-            _productRuleManager = new ProductRuleManager();
-            OnLogMessage("已重新加载产品规则");
+            // 重新加载产品规则，但不重置规则的允许打印状态
+            _productRuleManager = new ProductRuleManager(resetAllowPrintStatus: false);
+            OnLogMessage("已重新加载产品规则，保留了允许打印的设置");
         }
 
 

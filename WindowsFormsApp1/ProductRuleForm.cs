@@ -22,7 +22,8 @@ namespace WindowsFormsApp1
         public ProductRuleForm()
         {
             InitializeComponent();
-            _ruleManager = new ProductRuleManager();
+            // 打开产品规则界面时不重置规则的允许打印状态
+            _ruleManager = new ProductRuleManager(resetAllowPrintStatus: false);
             LoadRules();
             SetupDataGridViews();
         }
@@ -106,14 +107,14 @@ namespace WindowsFormsApp1
                 ReadOnly = true
             });
 
-            var rejectPrintColumn = new DataGridViewCheckBoxColumn
+            var allowPrintColumn = new DataGridViewCheckBoxColumn
             {
-                DataPropertyName = "RejectPrint",
-                HeaderText = "拒绝打印",
+                DataPropertyName = "AllowPrint",
+                HeaderText = "允许打印",
                 Width = 80,
                 ReadOnly = true
             };
-            dgvRules.Columns.Add(rejectPrintColumn);
+            dgvRules.Columns.Add(allowPrintColumn);
 
             dgvRules.Columns.Add(new DataGridViewTextBoxColumn
             {
@@ -170,14 +171,14 @@ namespace WindowsFormsApp1
                 ReadOnly = true
             });
 
-            var specialRejectPrintColumn = new DataGridViewCheckBoxColumn
+            var specialAllowPrintColumn = new DataGridViewCheckBoxColumn
             {
-                DataPropertyName = "RejectPrint",
-                HeaderText = "拒绝打印",
+                DataPropertyName = "AllowPrint",
+                HeaderText = "允许打印",
                 Width = 80,
                 ReadOnly = true
             };
-            dgvSpecialRules.Columns.Add(specialRejectPrintColumn);
+            dgvSpecialRules.Columns.Add(specialAllowPrintColumn);
         }
 
         private void dgvRules_SelectionChanged(object sender, EventArgs e)
@@ -198,7 +199,7 @@ namespace WindowsFormsApp1
                     txtCustomerName.Text = _currentRule.CustomerName;
                     txtWeightLowerLimit.Text = _currentRule.WeightLowerLimit.ToString();
                     txtWeightUpperLimit.Text = _currentRule.WeightUpperLimit.ToString();
-                    chkRejectPrint.Checked = _currentRule.RejectPrint;
+                    chkRejectPrint.Checked = _currentRule.AllowPrint;
                     txtQRCode.Text = _currentRule.QRCode;
                     chkEnableSpecialRules.Checked = _currentRule.EnableSpecialRules;
 
@@ -242,14 +243,14 @@ namespace WindowsFormsApp1
             txtCustomerName.Text = string.Empty;
             txtWeightLowerLimit.Text = string.Empty;
             txtWeightUpperLimit.Text = string.Empty;
-            chkRejectPrint.Checked = false;
+            chkRejectPrint.Checked = false; // 默认不允许打印
             txtQRCode.Text = string.Empty;
             chkEnableSpecialRules.Checked = false;
             txtSpecialChickenHouse.Text = string.Empty;
             txtSpecialWeightLowerLimit.Text = string.Empty;
             txtSpecialWeightUpperLimit.Text = string.Empty;
             txtSpecialQRCode.Text = string.Empty;
-            chkSpecialRejectPrint.Checked = false;
+            chkSpecialRejectPrint.Checked = false; // 默认不允许打印
         }
 
         private void btnAddRule_Click(object sender, EventArgs e)
@@ -291,7 +292,7 @@ namespace WindowsFormsApp1
                     CustomerName = txtCustomerName.Text,
                     WeightLowerLimit = lowerLimit,
                     WeightUpperLimit = upperLimit,
-                    RejectPrint = chkRejectPrint.Checked,
+                    AllowPrint = chkRejectPrint.Checked,
                     QRCode = txtQRCode.Text,
                     EnableSpecialRules = chkEnableSpecialRules.Checked,
                     SpecialRules = new List<SpecialRuleCondition>()
@@ -363,7 +364,7 @@ namespace WindowsFormsApp1
                 _currentRule.CustomerName = txtCustomerName.Text;
                 _currentRule.WeightLowerLimit = lowerLimit;
                 _currentRule.WeightUpperLimit = upperLimit;
-                _currentRule.RejectPrint = chkRejectPrint.Checked;
+                _currentRule.AllowPrint = chkRejectPrint.Checked;
                 _currentRule.QRCode = txtQRCode.Text;
                 _currentRule.EnableSpecialRules = chkEnableSpecialRules.Checked;
 
@@ -384,7 +385,7 @@ namespace WindowsFormsApp1
 
                 // 保存当前规则的ID，以便在刷新后重新选择
                 int currentRuleId = _currentRule.Id;
-                bool rejectPrintStatus = _currentRule.RejectPrint;
+                bool allowPrintStatus = _currentRule.AllowPrint;
 
                 // 刷新列表
                 LoadRules();
@@ -395,8 +396,8 @@ namespace WindowsFormsApp1
                 // 确保拒绝打印状态与更新前一致
                 if (_currentRule != null)
                 {
-                    _currentRule.RejectPrint = rejectPrintStatus;
-                    chkRejectPrint.Checked = rejectPrintStatus;
+                    _currentRule.AllowPrint = allowPrintStatus;
+                    chkRejectPrint.Checked = allowPrintStatus;
                 }
             }
             catch (Exception ex)
@@ -485,7 +486,7 @@ namespace WindowsFormsApp1
                     WeightLowerLimit = lowerLimit,
                     WeightUpperLimit = upperLimit,
                     QRCode = txtSpecialQRCode.Text,
-                    RejectPrint = chkSpecialRejectPrint.Checked
+                    AllowPrint = chkSpecialRejectPrint.Checked
                 };
 
                 // 检查特殊规则是否重复
@@ -595,12 +596,12 @@ namespace WindowsFormsApp1
 
             if (_currentRule != null)
             {
-                _currentRule.RejectPrint = chkRejectPrint.Checked;
+                _currentRule.AllowPrint = chkRejectPrint.Checked;
 
                 // 保存更改
                 _ruleManager.UpdateRule(_currentRule);
 
-                Logger.Debug($"拒绝打印状态已更改为: {chkRejectPrint.Checked} 并已保存");
+                Logger.Debug($"允许打印状态已更改为: {chkRejectPrint.Checked} 并已保存");
             }
         }
 
@@ -651,8 +652,8 @@ namespace WindowsFormsApp1
                 var selectedCondition = dgvSpecialRules.SelectedRows[0].DataBoundItem as SpecialRuleCondition;
                 if (selectedCondition != null)
                 {
-                    // 更新特殊规则的拒绝打印状态
-                    selectedCondition.RejectPrint = chkSpecialRejectPrint.Checked;
+                    // 更新特殊规则的允许打印状态
+                    selectedCondition.AllowPrint = chkSpecialRejectPrint.Checked;
 
                     // 保存更改
                     _ruleManager.UpdateRule(_currentRule);
@@ -675,12 +676,12 @@ namespace WindowsFormsApp1
                         }
                     }
 
-                    Logger.Debug($"特殊规则拒绝打印状态已更改为: {chkSpecialRejectPrint.Checked} 并已保存");
+                    Logger.Debug($"特殊规则允许打印状态已更改为: {chkSpecialRejectPrint.Checked} 并已保存");
                 }
             }
             else
             {
-                Logger.Debug($"特殊规则拒绝打印状态已更改为: {chkSpecialRejectPrint.Checked}，但没有选中的特殊规则，未保存");
+                Logger.Debug($"特殊规则允许打印状态已更改为: {chkSpecialRejectPrint.Checked}，但没有选中的特殊规则，未保存");
             }
         }
 
@@ -732,7 +733,7 @@ namespace WindowsFormsApp1
                     txtSpecialWeightLowerLimit.Text = selectedCondition.WeightLowerLimit.ToString();
                     txtSpecialWeightUpperLimit.Text = selectedCondition.WeightUpperLimit.ToString();
                     txtSpecialQRCode.Text = selectedCondition.QRCode;
-                    chkSpecialRejectPrint.Checked = selectedCondition.RejectPrint;
+                    chkSpecialRejectPrint.Checked = selectedCondition.AllowPrint;
 
                     // 重置加载标志
                     _isLoading = false;

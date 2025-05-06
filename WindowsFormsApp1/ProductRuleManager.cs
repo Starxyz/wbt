@@ -5,10 +5,99 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using NLog;
 
 namespace WindowsFormsApp1
 {
+    /// <summary>
+    /// 自定义 JSON 转换器，用于处理旧的 RejectPrint 属性
+    /// </summary>
+    public class ProductRuleConverter : JsonConverter
+    {
+        public override bool CanConvert(Type objectType)
+        {
+            return objectType == typeof(ProductRule);
+        }
+
+        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+        {
+            JObject jo = JObject.Load(reader);
+            ProductRule rule = new ProductRule();
+
+            // 设置基本属性
+            rule.Id = jo["Id"].Value<int>();
+            rule.Version = jo["Version"].Value<string>();
+            rule.ProductName = jo["ProductName"].Value<string>();
+            rule.Specification = jo["Specification"].Value<string>();
+            rule.ChickenHouse = jo["ChickenHouse"]?.Value<string>();
+            rule.CustomerName = jo["CustomerName"]?.Value<string>();
+            rule.WeightLowerLimit = jo["WeightLowerLimit"].Value<double>();
+            rule.WeightUpperLimit = jo["WeightUpperLimit"].Value<double>();
+            rule.QRCode = jo["QRCode"]?.Value<string>();
+            rule.EnableSpecialRules = jo["EnableSpecialRules"]?.Value<bool>() ?? false;
+
+            // 处理 RejectPrint 到 AllowPrint 的转换
+            // 无论如何，默认都设置为不允许打印
+            rule.AllowPrint = false;
+
+            // 只有当明确指定 AllowPrint 为 true 时才允许打印
+            if (jo["AllowPrint"] != null && jo["AllowPrint"].Value<bool>() == true)
+            {
+                rule.AllowPrint = true;
+            }
+            // 如果使用的是旧的 RejectPrint 属性，只有当它明确为 false 时才允许打印
+            else if (jo["RejectPrint"] != null && jo["RejectPrint"].Value<bool>() == false)
+            {
+                rule.AllowPrint = false; // 强制设置为 false，确保默认不允许打印
+            }
+
+            // 处理特殊规则
+            if (jo["SpecialRules"] != null)
+            {
+                rule.SpecialRules = new List<SpecialRuleCondition>();
+                foreach (JObject specialRuleJo in jo["SpecialRules"])
+                {
+                    SpecialRuleCondition specialRule = new SpecialRuleCondition();
+                    specialRule.ChickenHouse = specialRuleJo["ChickenHouse"]?.Value<string>();
+                    specialRule.WeightLowerLimit = specialRuleJo["WeightLowerLimit"].Value<double>();
+                    specialRule.WeightUpperLimit = specialRuleJo["WeightUpperLimit"].Value<double>();
+                    specialRule.QRCode = specialRuleJo["QRCode"]?.Value<string>();
+
+                    // 处理特殊规则的 RejectPrint 到 AllowPrint 的转换
+                    // 无论如何，默认都设置为不允许打印
+                    specialRule.AllowPrint = false;
+
+                    // 只有当明确指定 AllowPrint 为 true 时才允许打印
+                    if (specialRuleJo["AllowPrint"] != null && specialRuleJo["AllowPrint"].Value<bool>() == true)
+                    {
+                        specialRule.AllowPrint = true;
+                    }
+                    // 如果使用的是旧的 RejectPrint 属性，只有当它明确为 false 时才允许打印
+                    else if (specialRuleJo["RejectPrint"] != null && specialRuleJo["RejectPrint"].Value<bool>() == false)
+                    {
+                        specialRule.AllowPrint = false; // 强制设置为 false，确保默认不允许打印
+                    }
+
+                    rule.SpecialRules.Add(specialRule);
+                }
+            }
+
+            return rule;
+        }
+
+        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+        {
+            // 使用默认序列化
+            serializer.Serialize(writer, value);
+        }
+
+        public override bool CanWrite
+        {
+            get { return false; }
+        }
+    }
+
     /// <summary>
     /// 产品规则管理器，用于管理产品规则的增删改查和持久化
     /// </summary>
@@ -22,10 +111,64 @@ namespace WindowsFormsApp1
         /// 构造函数
         /// </summary>
         /// <param name="filePath">规则文件路径</param>
-        public ProductRuleManager(string filePath = "product_rules.json")
+        /// <param name="resetAllowPrintStatus">是否重置所有规则的允许打印状态为不允许打印</param>
+        public ProductRuleManager(string filePath = "product_rules.json", bool resetAllowPrintStatus = false)
         {
             _filePath = filePath;
             _rules = LoadRules();
+
+            // 只有在指定需要重置时才重置所有规则的允许打印状态
+            if (resetAllowPrintStatus)
+            {
+                SetAllRulesToDisallowPrint();
+                Logger.Info("初始化时重置所有规则的允许打印状态为不允许打印");
+            }
+            else
+            {
+                Logger.Info("初始化时保留所有规则的允许打印状态");
+            }
+        }
+
+        /// <summary>
+        /// 将所有规则设置为不允许打印
+        /// </summary>
+        private void SetAllRulesToDisallowPrint()
+        {
+            int changedCount = 0;
+
+            // 设置所有主规则为不允许打印
+            foreach (var rule in _rules)
+            {
+                if (rule.AllowPrint)
+                {
+                    rule.AllowPrint = false;
+                    changedCount++;
+                }
+
+                // 设置所有特殊规则为不允许打印
+                if (rule.SpecialRules != null)
+                {
+                    foreach (var specialRule in rule.SpecialRules)
+                    {
+                        if (specialRule.AllowPrint)
+                        {
+                            specialRule.AllowPrint = false;
+                            changedCount++;
+                        }
+                    }
+                }
+            }
+
+            if (changedCount > 0)
+            {
+                Logger.Info($"程序启动时，已将 {changedCount} 个规则的允许打印状态重置为不允许打印");
+                // 保存更改
+                SaveRules();
+            }
+            else
+            {
+                Logger.Info("程序启动时，所有规则已经是不允许打印状态，无需重置");
+            }
         }
 
         /// <summary>
@@ -651,7 +794,7 @@ namespace WindowsFormsApp1
             {
                 index++;
                 // 记录每个特殊规则的详细信息
-                Logger.Info($"检查特殊规则 #{index}: 鸡舍={condition.ChickenHouse ?? "未指定"}, 重量范围=[{condition.WeightLowerLimit}-{condition.WeightUpperLimit}], 二维码={condition.QRCode}, 拒绝打印={condition.RejectPrint}");
+                Logger.Info($"检查特殊规则 #{index}: 鸡舍={condition.ChickenHouse ?? "未指定"}, 重量范围=[{condition.WeightLowerLimit}-{condition.WeightUpperLimit}], 二维码={condition.QRCode}, 允许打印={condition.AllowPrint}");
 
                 // 检查鸡舍是否匹配
                 if (!string.IsNullOrEmpty(chickenHouse) && !string.IsNullOrEmpty(condition.ChickenHouse) &&
@@ -693,8 +836,8 @@ namespace WindowsFormsApp1
                         // 使用特殊规则的重量范围，而不是版面自身的重量范围
                         WeightLowerLimit = condition.WeightLowerLimit,
                         WeightUpperLimit = condition.WeightUpperLimit,
-                        // 使用特殊规则的拒绝打印设置，如果特殊规则有设置的话
-                        RejectPrint = condition.RejectPrint,
+                        // 使用特殊规则的允许打印设置，如果特殊规则有设置的话
+                        AllowPrint = condition.AllowPrint,
                         // 使用特殊规则的二维码
                         QRCode = condition.QRCode,
                         EnableSpecialRules = false,
@@ -704,9 +847,13 @@ namespace WindowsFormsApp1
                     var duration = (DateTime.Now - startTime).TotalMilliseconds;
                     Logger.Info($"特殊规则处理完成，找到匹配的特殊规则 #{index}，耗时: {duration:F0}ms");
 
-                    if (condition.RejectPrint)
+                    if (!condition.AllowPrint)
                     {
                         Logger.Info($"特殊规则 #{index} 设置为拒绝打印: 版面={rule.Version}, 鸡舍={chickenHouse ?? "未指定"}, 重量={weight}");
+                    }
+                    else
+                    {
+                        Logger.Info($"特殊规则 #{index} 设置为允许打印: 版面={rule.Version}, 鸡舍={chickenHouse ?? "未指定"}, 重量={weight}");
                     }
 
                     return specialRule;
@@ -744,7 +891,12 @@ namespace WindowsFormsApp1
                 if (File.Exists(_filePath))
                 {
                     string json = File.ReadAllText(_filePath, Encoding.UTF8);
-                    var rules = JsonConvert.DeserializeObject<List<ProductRule>>(json);
+                    // 使用自定义转换器处理旧的 RejectPrint 属性
+                    var settings = new JsonSerializerSettings
+                    {
+                        Converters = new List<JsonConverter> { new ProductRuleConverter() }
+                    };
+                    var rules = JsonConvert.DeserializeObject<List<ProductRule>>(json, settings);
                     Logger.Info($"成功从 {_filePath} 加载了 {rules.Count} 条规则");
                     return rules;
                 }
@@ -768,8 +920,13 @@ namespace WindowsFormsApp1
         {
             try
             {
+                // 使用默认设置序列化，确保使用新的属性名
                 string json = JsonConvert.SerializeObject(_rules, Formatting.Indented);
                 File.WriteAllText(_filePath, json, Encoding.UTF8);
+
+                // 记录日志，提示所有规则的允许打印状态
+                int allowedCount = _rules.Count(r => r.AllowPrint);
+                Logger.Info($"保存规则时，共有 {allowedCount}/{_rules.Count} 条规则设置为允许打印");
                 Logger.Info($"成功保存 {_rules.Count} 条规则到 {_filePath}");
             }
             catch (Exception ex)
