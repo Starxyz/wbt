@@ -11,6 +11,67 @@ using NLog;
 namespace WindowsFormsApp1
 {
     /// <summary>
+    /// 规则匹配结果类，用于存储规则匹配的结果和失败原因
+    /// </summary>
+    public class RuleMatchingResult
+    {
+        /// <summary>
+        /// 匹配的规则，如果没有匹配则为null
+        /// </summary>
+        public ProductRule MatchedRule { get; set; }
+
+        /// <summary>
+        /// 匹配失败的原因，如果匹配成功则为null
+        /// </summary>
+        public string FailureReason { get; set; }
+
+        /// <summary>
+        /// 匹配失败的阶段
+        /// </summary>
+        public MatchingStage FailureStage { get; set; }
+
+        /// <summary>
+        /// 可用的选项列表（如可用的鸡舍号、客户名或重量范围）
+        /// </summary>
+        public List<string> AvailableOptions { get; set; } = new List<string>();
+
+        /// <summary>
+        /// 是否匹配成功
+        /// </summary>
+        public bool IsSuccess => MatchedRule != null;
+    }
+
+    /// <summary>
+    /// 匹配失败的阶段枚举
+    /// </summary>
+    public enum MatchingStage
+    {
+        /// <summary>
+        /// 版面匹配阶段
+        /// </summary>
+        Version,
+
+        /// <summary>
+        /// 允许打印状态匹配阶段
+        /// </summary>
+        AllowPrint,
+
+        /// <summary>
+        /// 鸡舍号匹配阶段
+        /// </summary>
+        ChickenHouse,
+
+        /// <summary>
+        /// 客户名匹配阶段
+        /// </summary>
+        CustomerName,
+
+        /// <summary>
+        /// 重量匹配阶段
+        /// </summary>
+        Weight
+    }
+    /// <summary>
     /// 自定义 JSON 转换器，用于处理旧的 RejectPrint 属性
     /// </summary>
     public class ProductRuleConverter : JsonConverter
@@ -535,48 +596,324 @@ namespace WindowsFormsApp1
         /// <param name="chickenHouse">鸡舍号，可能为null</param>
         /// <param name="customerName">客户名，可能为null</param>
         /// <param name="weight">重量</param>
-        /// <returns>匹配的规则，如果没找到则返回null</returns>
-        public ProductRule FindMatchingRule(string version, string chickenHouse, string customerName, double weight)
+        /// <returns>规则匹配结果，包含匹配的规则或失败原因</returns>
+        public RuleMatchingResult FindMatchingRule(string version, string chickenHouse, string customerName, double weight)
         {
             var startTime = DateTime.Now;
             Logger.Info($"开始查找匹配规则: 版面={version}, 鸡舍={chickenHouse ?? "未指定"}, 客户名={customerName ?? "未指定"}, 重量={weight}");
 
-            // 首先筛选版面匹配的规则
+            var result = new RuleMatchingResult();
+
+            // 按版面筛选规则
+            var matchingRules = FilterRulesByVersion(version);
+            if (matchingRules.Count == 0)
+            {
+                return CreateVersionFailureResult(version);
+            }
+
+            // 按允许打印状态筛选规则
+            matchingRules = FilterRulesByAllowPrint(matchingRules);
+            if (matchingRules.Count == 0)
+            {
+                return CreateAllowPrintFailureResult();
+            }
+
+            // 优化：如果只有一个简单规则，直接判断重量
+            var simpleRule = CheckForSingleSimpleRule(matchingRules, weight);
+            if (simpleRule != null)
+            {
+                return CreateSuccessResult(simpleRule, startTime);
+            }
+
+            // 按鸡舍号筛选规则
+            var chickenHouseResult = FilterRulesByChickenHouseWithResult(matchingRules, chickenHouse);
+            if (chickenHouseResult.Count == 0)
+            {
+                return CreateChickenHouseFailureResult(matchingRules, chickenHouse);
+            }
+            matchingRules = chickenHouseResult;
+
+            // 按客户名筛选规则
+            var customerNameResult = FilterRulesByCustomerNameWithResult(matchingRules, customerName);
+            if (customerNameResult.Count == 0)
+            {
+                return CreateCustomerNameFailureResult(matchingRules, customerName);
+            }
+            matchingRules = customerNameResult;
+
+            // 按重量筛选规则，找出最终匹配的规则
+            var finalRule = FindRuleMatchingWeight(matchingRules, chickenHouse, weight);
+
+            var totalMatchDuration = (DateTime.Now - startTime).TotalMilliseconds;
+            if (finalRule != null)
+            {
+                result.MatchedRule = finalRule;
+                Logger.Info($"找到匹配的规则: ID={finalRule.Id}, 品名={finalRule.ProductName}, 规格={finalRule.Specification}, 重量范围=[{finalRule.WeightLowerLimit}-{finalRule.WeightUpperLimit}], 耗时: {totalMatchDuration:F0}ms");
+                return result;
+            }
+            else
+            {
+                Logger.Info($"未找到匹配的规则，查找耗时: {totalMatchDuration:F0}ms");
+                return CreateWeightFailureResult(matchingRules, weight);
+            }
+        }
+
+        /// <summary>
+        /// 创建版面匹配失败的结果
+        /// </summary>
+        /// <param name="version">版面信息</param>
+        /// <returns>匹配失败的结果</returns>
+        private RuleMatchingResult CreateVersionFailureResult(string version)
+        {
+            var result = new RuleMatchingResult
+            {
+                FailureStage = MatchingStage.Version,
+                FailureReason = $"系统中没有品类为 {version} 的规则，请先添加相关规则"
+            };
+            return result;
+        }
+
+        /// <summary>
+        /// 创建允许打印状态匹配失败的结果
+        /// </summary>
+        /// <returns>匹配失败的结果</returns>
+        private RuleMatchingResult CreateAllowPrintFailureResult()
+        {
+            var result = new RuleMatchingResult
+            {
+                FailureStage = MatchingStage.AllowPrint,
+                FailureReason = $"未找到允许打印的规则，所有规则都设置为不允许打印"
+            };
+            return result;
+        }
+
+        /// <summary>
+        /// 创建匹配成功的结果
+        /// </summary>
+        /// <param name="rule">匹配的规则</param>
+        /// <param name="startTime">开始时间，用于计算耗时</param>
+        /// <returns>匹配成功的结果</returns>
+        private RuleMatchingResult CreateSuccessResult(ProductRule rule, DateTime startTime)
+        {
+            var result = new RuleMatchingResult
+            {
+                MatchedRule = rule
+            };
+            var totalDuration = (DateTime.Now - startTime).TotalMilliseconds;
+            Logger.Info($"找到匹配的规则: ID={rule.Id}, 品名={rule.ProductName}, 规格={rule.Specification}, 重量范围=[{rule.WeightLowerLimit}-{rule.WeightUpperLimit}], 耗时: {totalDuration:F0}ms");
+            return result;
+        }
+
+        /// <summary>
+        /// 创建鸡舍号匹配失败的结果
+        /// </summary>
+        /// <param name="rules">规则列表</param>
+        /// <param name="chickenHouse">鸡舍号</param>
+        /// <returns>匹配失败的结果</returns>
+        private RuleMatchingResult CreateChickenHouseFailureResult(List<ProductRule> rules, string chickenHouse)
+        {
+            var result = new RuleMatchingResult
+            {
+                FailureStage = MatchingStage.ChickenHouse
+            };
+
+            if (!string.IsNullOrEmpty(chickenHouse))
+            {
+                var availableChickenHouses = rules
+                    .Where(r => !string.IsNullOrEmpty(r.ChickenHouse))
+                    .Select(r => r.ChickenHouse)
+                    .Distinct()
+                    .ToList();
+
+                if (availableChickenHouses.Any())
+                {
+                    result.FailureReason = $"没有鸡舍号为 {chickenHouse} 的规则，当前品类有以下鸡舍号的规则: {string.Join(", ", availableChickenHouses)}";
+                    result.AvailableOptions = availableChickenHouses;
+                }
+                else
+                {
+                    result.FailureReason = $"没有鸡舍号为 {chickenHouse} 的规则，也没有通用鸡舍号规则";
+                }
+            }
+            else
+            {
+                var availableChickenHouses = rules
+                    .Where(r => !string.IsNullOrEmpty(r.ChickenHouse))
+                    .Select(r => r.ChickenHouse)
+                    .Distinct()
+                    .ToList();
+
+                if (availableChickenHouses.Any())
+                {
+                    result.FailureReason = $"没有通用鸡舍号规则，需要指定以下鸡舍号之一: {string.Join(", ", availableChickenHouses)}";
+                    result.AvailableOptions = availableChickenHouses;
+                }
+                else
+                {
+                    result.FailureReason = "没有通用鸡舍号规则，所有规则都需要指定鸡舍号";
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 创建客户名匹配失败的结果
+        /// </summary>
+        /// <param name="rules">规则列表</param>
+        /// <param name="customerName">客户名</param>
+        /// <returns>匹配失败的结果</returns>
+        private RuleMatchingResult CreateCustomerNameFailureResult(List<ProductRule> rules, string customerName)
+        {
+            var result = new RuleMatchingResult
+            {
+                FailureStage = MatchingStage.CustomerName
+            };
+
+            if (!string.IsNullOrEmpty(customerName))
+            {
+                string trimmedCustomerName = customerName.Trim();
+                var availableCustomerNames = rules
+                    .Where(r => !string.IsNullOrEmpty(r.CustomerName))
+                    .Select(r => r.CustomerName.Trim())
+                    .Distinct()
+                    .ToList();
+
+                if (availableCustomerNames.Any())
+                {
+                    result.FailureReason = $"没有客户名为 {trimmedCustomerName} 的规则，当前条件下有以下客户名的规则: {string.Join(", ", availableCustomerNames)}";
+                    result.AvailableOptions = availableCustomerNames;
+                }
+                else
+                {
+                    result.FailureReason = $"没有客户名为 {trimmedCustomerName} 的规则，也没有通用客户名规则";
+                }
+            }
+            else
+            {
+                var availableCustomerNames = rules
+                    .Where(r => !string.IsNullOrEmpty(r.CustomerName))
+                    .Select(r => r.CustomerName.Trim())
+                    .Distinct()
+                    .ToList();
+
+                if (availableCustomerNames.Any())
+                {
+                    result.FailureReason = $"没有通用客户名规则，当前条件下需要指定以下客户名之一: {string.Join(", ", availableCustomerNames)}";
+                    result.AvailableOptions = availableCustomerNames;
+                }
+                else
+                {
+                    result.FailureReason = "没有通用客户名规则，所有规则都需要指定客户名";
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 创建重量匹配失败的结果
+        /// </summary>
+        /// <param name="rules">规则列表</param>
+        /// <param name="weight">重量</param>
+        /// <returns>匹配失败的结果</returns>
+        private RuleMatchingResult CreateWeightFailureResult(List<ProductRule> rules, double weight)
+        {
+            var result = new RuleMatchingResult
+            {
+                FailureStage = MatchingStage.Weight
+            };
+
+            var availableWeightRanges = rules
+                .Select(r => $"[{r.WeightLowerLimit}-{r.WeightUpperLimit}]")
+                .Distinct()
+                .ToList();
+
+            if (availableWeightRanges.Any())
+            {
+                result.FailureReason = $"重量 {weight} 不在任何规则的范围内，当前条件下有以下重量范围的规则: {string.Join(", ", availableWeightRanges)}";
+                result.AvailableOptions = availableWeightRanges;
+            }
+            else
+            {
+                result.FailureReason = $"没有找到适用的重量范围规则";
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 获取匹配的规则（兼容旧版本）
+        /// </summary>
+        /// <param name="version">版面信息</param>
+        /// <param name="chickenHouse">鸡舍号，可能为null</param>
+        /// <param name="customerName">客户名，可能为null</param>
+        /// <param name="weight">重量</param>
+        /// <returns>匹配的规则，如果没找到则返回null</returns>
+        public ProductRule GetMatchingRule(string version, string chickenHouse, string customerName, double weight)
+        {
+            var result = FindMatchingRule(version, chickenHouse, customerName, weight);
+            return result.MatchedRule;
+        }
+
+        /// <summary>
+        /// 按版面筛选规则
+        /// </summary>
+        /// <param name="version">版面信息</param>
+        /// <returns>筛选后的规则列表</returns>
+        private List<ProductRule> FilterRulesByVersion(string version)
+        {
             var matchingRules = _rules.Where(r => r.Version == version).ToList();
             Logger.Info($"按版面筛选后的规则数量: {matchingRules.Count}");
 
             if (matchingRules.Count == 0)
             {
                 Logger.Info($"【匹配失败】未找到版面为 {version} 的规则，请检查规则配置");
-                return null;
             }
 
-            // 优化：先筛选允许打印的规则
-            var originalCount = matchingRules.Count;
-            matchingRules = matchingRules.Where(r => r.AllowPrint).ToList();
+            return matchingRules;
+        }
+
+        /// <summary>
+        /// 按允许打印状态筛选规则
+        /// </summary>
+        /// <param name="rules">要筛选的规则列表</param>
+        /// <returns>筛选后的规则列表</returns>
+        private List<ProductRule> FilterRulesByAllowPrint(List<ProductRule> rules)
+        {
+            var originalCount = rules.Count;
+            var matchingRules = rules.Where(r => r.AllowPrint).ToList();
             Logger.Info($"按允许打印筛选后的规则数量: {matchingRules.Count}/{originalCount}");
 
             if (matchingRules.Count == 0)
             {
                 Logger.Info($"【匹配失败】未找到允许打印的规则，所有规则都设置为不允许打印");
-                return null;
             }
 
-            // 新增判断：如果只有一个规则符合，并且这个规则的鸡舍号和客户名都为空，没有特殊规则，则直接跳到重量判断
-            if (matchingRules.Count == 1)
+            return matchingRules;
+        }
+
+        /// <summary>
+        /// 检查是否只有一个简单规则（没有鸡舍号、客户名和特殊规则），如果是则直接判断重量
+        /// </summary>
+        /// <param name="rules">要检查的规则列表</param>
+        /// <param name="weight">重量</param>
+        /// <returns>如果找到匹配的简单规则则返回该规则，否则返回null</returns>
+        private ProductRule CheckForSingleSimpleRule(List<ProductRule> rules, double weight)
+        {
+            if (rules.Count == 1)
             {
-                var singleRule = matchingRules[0];
+                var singleRule = rules[0];
                 if (string.IsNullOrEmpty(singleRule.ChickenHouse) &&
                     string.IsNullOrEmpty(singleRule.CustomerName) &&
                     (!singleRule.EnableSpecialRules || singleRule.SpecialRules == null || !singleRule.SpecialRules.Any()))
                 {
-                    Logger.Info($"只有一个规则匹配版面 {version}，且该规则鸡舍号和客户名都为空，没有特殊规则，直接进行重量判断");
+                    Logger.Info($"只有一个规则匹配版面 {singleRule.Version}，且该规则鸡舍号和客户名都为空，没有特殊规则，直接进行重量判断");
 
                     // 直接判断重量
                     if (singleRule.WeightLowerLimit <= weight && weight <= singleRule.WeightUpperLimit)
                     {
-                        var duration = (DateTime.Now - startTime).TotalMilliseconds;
-                        Logger.Info($"找到匹配的规则: ID={singleRule.Id}, 品名={singleRule.ProductName}, 规格={singleRule.Specification}, 重量范围=[{singleRule.WeightLowerLimit}-{singleRule.WeightUpperLimit}], 耗时: {duration:F0}ms");
+                        Logger.Info($"找到匹配的规则: ID={singleRule.Id}, 品名={singleRule.ProductName}, 规格={singleRule.Specification}, 重量范围=[{singleRule.WeightLowerLimit}-{singleRule.WeightUpperLimit}]");
                         return singleRule;
                     }
                     else
@@ -586,16 +923,38 @@ namespace WindowsFormsApp1
                     }
                 }
             }
+            return null;
+        }
 
-            // 进一步筛选鸡舍号匹配的规则
-            var originalRuleCount = matchingRules.Count;
+        /// <summary>
+        /// 按鸡舍号筛选规则
+        /// </summary>
+        /// <param name="rules">要筛选的规则列表</param>
+        /// <param name="chickenHouse">鸡舍号，可能为null</param>
+        /// <returns>筛选后的规则列表</returns>
+        private List<ProductRule> FilterRulesByChickenHouse(List<ProductRule> rules, string chickenHouse)
+        {
+            return FilterRulesByChickenHouseWithResult(rules, chickenHouse);
+        }
+
+        /// <summary>
+        /// 按鸡舍号筛选规则，返回筛选后的规则列表
+        /// </summary>
+        /// <param name="rules">要筛选的规则列表</param>
+        /// <param name="chickenHouse">鸡舍号，可能为null</param>
+        /// <returns>筛选后的规则列表</returns>
+        private List<ProductRule> FilterRulesByChickenHouseWithResult(List<ProductRule> rules, string chickenHouse)
+        {
+            var originalRuleCount = rules.Count;
+            List<ProductRule> matchingRules;
+
             if (!string.IsNullOrEmpty(chickenHouse))
             {
                 // 如果提供了鸡舍号
                 Logger.Info($"开始按鸡舍号 {chickenHouse} 筛选规则");
 
                 // 首先尝试精确匹配鸡舍号
-                var exactChickenHouseRules = matchingRules.Where(r => r.ChickenHouse == chickenHouse).ToList();
+                var exactChickenHouseRules = rules.Where(r => r.ChickenHouse == chickenHouse).ToList();
                 if (exactChickenHouseRules.Any())
                 {
                     Logger.Info($"找到精确匹配鸡舍号 {chickenHouse} 的规则: {exactChickenHouseRules.Count} 条");
@@ -604,30 +963,8 @@ namespace WindowsFormsApp1
                 else
                 {
                     // 如果规则指定了鸡舍号，必须精确匹配才能作为打印的规则
-                    // 不再使用通用规则作为回退选项
                     Logger.Info($"【匹配失败】未找到精确匹配鸡舍号 {chickenHouse} 的规则");
-                    if (originalRuleCount > 0)
-                    {
-                        // 列出所有可用的鸡舍号
-                        var availableChickenHouses = matchingRules
-                            .Where(r => !string.IsNullOrEmpty(r.ChickenHouse))
-                            .Select(r => r.ChickenHouse)
-                            .Distinct()
-                            .ToList();
-
-                        if (availableChickenHouses.Any())
-                        {
-                            Logger.Info($"【提示】版面 {version} 有以下鸡舍号的规则: {string.Join(", ", availableChickenHouses)}");
-                        }
-
-                        // 检查是否有通用规则（没有指定鸡舍号的规则）
-                        var nullChickenHouseRules = matchingRules.Where(r => string.IsNullOrEmpty(r.ChickenHouse)).ToList();
-                        if (nullChickenHouseRules.Any())
-                        {
-                            Logger.Info($"【提示】版面 {version} 有 {nullChickenHouseRules.Count} 条通用鸡舍号规则，但根据新要求不再使用");
-                        }
-                    }
-
+                    LogAvailableChickenHouses(rules);
                     // 设置匹配规则为空列表，表示匹配失败
                     matchingRules = new List<ProductRule>();
                 }
@@ -636,7 +973,7 @@ namespace WindowsFormsApp1
             {
                 // 如果没有提供鸡舍号，只保留那些没有指定鸡舍号的规则
                 Logger.Info("未提供鸡舍号，只保留没有指定鸡舍号的规则");
-                var nullChickenHouseRules = matchingRules.Where(r => string.IsNullOrEmpty(r.ChickenHouse)).ToList();
+                var nullChickenHouseRules = rules.Where(r => string.IsNullOrEmpty(r.ChickenHouse)).ToList();
                 if (nullChickenHouseRules.Any())
                 {
                     Logger.Info($"找到没有指定鸡舍号的规则: {nullChickenHouseRules.Count} 条");
@@ -645,30 +982,61 @@ namespace WindowsFormsApp1
                 else
                 {
                     Logger.Info($"【匹配失败】没有找到没有指定鸡舍号的规则，所有规则都需要指定鸡舍号");
-                    // 列出所有可用的鸡舍号
-                    var availableChickenHouses = matchingRules
-                        .Where(r => !string.IsNullOrEmpty(r.ChickenHouse))
-                        .Select(r => r.ChickenHouse)
-                        .Distinct()
-                        .ToList();
-
-                    if (availableChickenHouses.Any())
-                    {
-                        Logger.Info($"【提示】版面 {version} 有以下鸡舍号的规则: {string.Join(", ", availableChickenHouses)}");
-                    }
+                    LogAvailableChickenHouses(rules);
+                    matchingRules = new List<ProductRule>();
                 }
             }
 
-            // 如果鸡舍号筛选后没有匹配的规则，直接返回
-            if (matchingRules.Count == 0)
+            return matchingRules;
+        }
+
+        /// <summary>
+        /// 记录所有可用的鸡舍号
+        /// </summary>
+        /// <param name="rules">规则列表</param>
+        private void LogAvailableChickenHouses(List<ProductRule> rules)
+        {
+            var availableChickenHouses = rules
+                .Where(r => !string.IsNullOrEmpty(r.ChickenHouse))
+                .Select(r => r.ChickenHouse)
+                .Distinct()
+                .ToList();
+
+            if (availableChickenHouses.Any())
             {
-                var totalDuration = (DateTime.Now - startTime).TotalMilliseconds;
-                Logger.Info($"未找到匹配的规则，查找耗时: {totalDuration:F0}ms");
-                return null;
+                Logger.Info($"【提示】有以下鸡舍号的规则: {string.Join(", ", availableChickenHouses)}");
             }
 
-            // 进一步筛选客户名匹配的规则
-            originalRuleCount = matchingRules.Count;
+            // 检查是否有通用规则（没有指定鸡舍号的规则）
+            var nullChickenHouseRules = rules.Where(r => string.IsNullOrEmpty(r.ChickenHouse)).ToList();
+            if (nullChickenHouseRules.Any())
+            {
+                Logger.Info($"【提示】有 {nullChickenHouseRules.Count} 条通用鸡舍号规则，但根据新要求不再使用");
+            }
+        }
+
+        /// <summary>
+        /// 按客户名筛选规则
+        /// </summary>
+        /// <param name="rules">要筛选的规则列表</param>
+        /// <param name="customerName">客户名，可能为null</param>
+        /// <returns>筛选后的规则列表</returns>
+        private List<ProductRule> FilterRulesByCustomerName(List<ProductRule> rules, string customerName)
+        {
+            return FilterRulesByCustomerNameWithResult(rules, customerName);
+        }
+
+        /// <summary>
+        /// 按客户名筛选规则，返回筛选后的规则列表
+        /// </summary>
+        /// <param name="rules">要筛选的规则列表</param>
+        /// <param name="customerName">客户名，可能为null</param>
+        /// <returns>筛选后的规则列表</returns>
+        private List<ProductRule> FilterRulesByCustomerNameWithResult(List<ProductRule> rules, string customerName)
+        {
+            var originalRuleCount = rules.Count;
+            List<ProductRule> matchingRules;
+
             if (!string.IsNullOrEmpty(customerName))
             {
                 // 如果提供了客户名，先清理客户名，删除开头或结尾的空格、回车、换行等不可见字符
@@ -676,7 +1044,7 @@ namespace WindowsFormsApp1
                 Logger.Info($"开始按客户名 {trimmedCustomerName} 筛选规则 (原始客户名: {customerName})");
 
                 // 首先尝试精确匹配客户名
-                var exactCustomerRules = matchingRules.Where(r =>
+                var exactCustomerRules = rules.Where(r =>
                     !string.IsNullOrEmpty(r.CustomerName) &&
                     r.CustomerName.Trim() == trimmedCustomerName
                 ).ToList();
@@ -689,7 +1057,7 @@ namespace WindowsFormsApp1
                 else
                 {
                     // 如果没有精确匹配，尝试匹配没有指定客户名的规则
-                    var nullCustomerRules = matchingRules.Where(r => string.IsNullOrEmpty(r.CustomerName)).ToList();
+                    var nullCustomerRules = rules.Where(r => string.IsNullOrEmpty(r.CustomerName)).ToList();
                     if (nullCustomerRules.Any())
                     {
                         Logger.Info($"未找到精确匹配客户名的规则，使用通用客户名规则: {nullCustomerRules.Count} 条");
@@ -698,20 +1066,8 @@ namespace WindowsFormsApp1
                     else
                     {
                         Logger.Info($"【匹配失败】既没有精确匹配客户名 {trimmedCustomerName} 的规则，也没有通用客户名规则");
-                        if (originalRuleCount > 0)
-                        {
-                            // 列出所有可用的客户名
-                            var availableCustomerNames = matchingRules
-                                .Where(r => !string.IsNullOrEmpty(r.CustomerName))
-                                .Select(r => r.CustomerName.Trim())
-                                .Distinct()
-                                .ToList();
-
-                            if (availableCustomerNames.Any())
-                            {
-                                Logger.Info($"【提示】当前筛选条件下有以下客户名的规则: {string.Join(", ", availableCustomerNames)}");
-                            }
-                        }
+                        LogAvailableCustomerNames(rules);
+                        matchingRules = new List<ProductRule>();
                     }
                 }
             }
@@ -719,7 +1075,7 @@ namespace WindowsFormsApp1
             {
                 // 如果没有提供客户名，只保留那些没有指定客户名的规则
                 Logger.Info("未提供客户名，只保留没有指定客户名的规则");
-                var nullCustomerRules = matchingRules.Where(r => string.IsNullOrEmpty(r.CustomerName)).ToList();
+                var nullCustomerRules = rules.Where(r => string.IsNullOrEmpty(r.CustomerName)).ToList();
                 if (nullCustomerRules.Any())
                 {
                     Logger.Info($"找到没有指定客户名的规则: {nullCustomerRules.Count} 条");
@@ -728,33 +1084,45 @@ namespace WindowsFormsApp1
                 else
                 {
                     Logger.Info($"【匹配失败】没有找到没有指定客户名的规则，所有规则都需要指定客户名");
-                    // 列出所有可用的客户名
-                    var availableCustomerNames = matchingRules
-                        .Where(r => !string.IsNullOrEmpty(r.CustomerName))
-                        .Select(r => r.CustomerName.Trim())
-                        .Distinct()
-                        .ToList();
-
-                    if (availableCustomerNames.Any())
-                    {
-                        Logger.Info($"【提示】当前筛选条件下有以下客户名的规则: {string.Join(", ", availableCustomerNames)}");
-                    }
+                    LogAvailableCustomerNames(rules);
+                    matchingRules = new List<ProductRule>();
                 }
             }
 
-            // 如果客户名筛选后没有匹配的规则，直接返回
-            if (matchingRules.Count == 0)
+            return matchingRules;
+        }
+
+        /// <summary>
+        /// 记录所有可用的客户名
+        /// </summary>
+        /// <param name="rules">规则列表</param>
+        private void LogAvailableCustomerNames(List<ProductRule> rules)
+        {
+            var availableCustomerNames = rules
+                .Where(r => !string.IsNullOrEmpty(r.CustomerName))
+                .Select(r => r.CustomerName.Trim())
+                .Distinct()
+                .ToList();
+
+            if (availableCustomerNames.Any())
             {
-                var totalDuration = (DateTime.Now - startTime).TotalMilliseconds;
-                Logger.Info($"未找到匹配的规则，查找耗时: {totalDuration:F0}ms");
-                return null;
+                Logger.Info($"【提示】当前筛选条件下有以下客户名的规则: {string.Join(", ", availableCustomerNames)}");
             }
+        }
 
-            Logger.Info($"筛选后剩余规则数量: {matchingRules.Count}");
+        /// <summary>
+        /// 查找匹配重量的规则
+        /// </summary>
+        /// <param name="rules">要筛选的规则列表</param>
+        /// <param name="chickenHouse">鸡舍号，可能为null</param>
+        /// <param name="weight">重量</param>
+        /// <returns>匹配的规则，如果没找到则返回null</returns>
+        private ProductRule FindRuleMatchingWeight(List<ProductRule> rules, string chickenHouse, double weight)
+        {
+            Logger.Info($"筛选后剩余规则数量: {rules.Count}");
 
-            // 最后筛选重量在范围内的规则
             bool anyRuleChecked = false;
-            foreach (var rule in matchingRules)
+            foreach (var rule in rules)
             {
                 anyRuleChecked = true;
                 Logger.Info($"检查规则 ID={rule.Id}, 品名={rule.ProductName}, 规格={rule.Specification}, 重量范围=[{rule.WeightLowerLimit}-{rule.WeightUpperLimit}], 启用特殊规则={rule.EnableSpecialRules}");
@@ -768,8 +1136,6 @@ namespace WindowsFormsApp1
                     var specialRule = ProcessSpecialRules(rule, chickenHouse, weight);
                     if (specialRule != null)
                     {
-                        var duration = (DateTime.Now - startTime).TotalMilliseconds;
-                        Logger.Info($"找到匹配的特殊规则: ID={specialRule.Id}, 品名={specialRule.ProductName}, 规格={specialRule.Specification}, 重量范围=[{specialRule.WeightLowerLimit}-{specialRule.WeightUpperLimit}], 耗时: {duration:F0}ms");
                         return specialRule;
                     }
 
@@ -781,8 +1147,6 @@ namespace WindowsFormsApp1
                 // 对于没有特殊规则的规则，检查版面自身的重量范围
                 if (rule.WeightLowerLimit <= weight && weight <= rule.WeightUpperLimit)
                 {
-                    var duration = (DateTime.Now - startTime).TotalMilliseconds;
-                    Logger.Info($"找到匹配的规则: ID={rule.Id}, 品名={rule.ProductName}, 规格={rule.Specification}, 重量范围=[{rule.WeightLowerLimit}-{rule.WeightUpperLimit}], 耗时: {duration:F0}ms");
                     return rule;
                 }
                 else
@@ -791,27 +1155,30 @@ namespace WindowsFormsApp1
                 }
             }
 
-            var totalDur = (DateTime.Now - startTime).TotalMilliseconds;
             if (anyRuleChecked)
             {
-                Logger.Info($"【匹配失败】所有规则的重量范围都不匹配当前重量 {weight}，查找耗时: {totalDur:F0}ms");
-
-                // 列出所有可用的重量范围
-                var availableWeightRanges = matchingRules
-                    .Select(r => $"[{r.WeightLowerLimit}-{r.WeightUpperLimit}]")
-                    .Distinct()
-                    .ToList();
-
-                if (availableWeightRanges.Any())
-                {
-                    Logger.Info($"【提示】当前筛选条件下有以下重量范围的规则: {string.Join(", ", availableWeightRanges)}");
-                }
+                Logger.Info($"【匹配失败】所有规则的重量范围都不匹配当前重量 {weight}");
+                LogAvailableWeightRanges(rules);
             }
-            else
-            {
-                Logger.Info($"未找到匹配的规则，查找耗时: {totalDur:F0}ms");
-            }
+
             return null;
+        }
+
+        /// <summary>
+        /// 记录所有可用的重量范围
+        /// </summary>
+        /// <param name="rules">规则列表</param>
+        private void LogAvailableWeightRanges(List<ProductRule> rules)
+        {
+            var availableWeightRanges = rules
+                .Select(r => $"[{r.WeightLowerLimit}-{r.WeightUpperLimit}]")
+                .Distinct()
+                .ToList();
+
+            if (availableWeightRanges.Any())
+            {
+                Logger.Info($"【提示】当前筛选条件下有以下重量范围的规则: {string.Join(", ", availableWeightRanges)}");
+            }
         }
 
         /// <summary>
