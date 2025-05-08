@@ -1095,6 +1095,8 @@ namespace WindowsFormsApp1
         private void btnProductRules_Click(object sender, EventArgs e)
         {
             ProductRuleForm form = new ProductRuleForm();
+            // 设置窗体为最大化状态
+            form.WindowState = FormWindowState.Maximized;
             form.ShowDialog();
 
             // 重新加载产品规则，但不重置规则的允许打印状态
