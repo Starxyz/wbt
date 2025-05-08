@@ -560,8 +560,8 @@ namespace WindowsFormsApp1
                     // 检查是否允许打印
                     if (!matchedRule.AllowPrint)
                     {
-                        string rejectReason = $"规则ID={matchedRule.Id}, 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 重量范围=[{matchedRule.WeightLowerLimit}-{matchedRule.WeightUpperLimit}]";
-                        Logger.Info($"根据规则 {matchedRule.Id} 拒绝打印: 品类={category}, 鸡舍={chickenHouse}, 重量={weight}");
+                        string rejectReason = $"规则ID={matchedRule.Id}, 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 重量范围=[{matchedRule.WeightLowerLimit}-{matchedRule.WeightUpperLimit}], 未勾选允许打印";
+                        Logger.Info($"根据规则 {matchedRule.Id} 拒绝打印: 品类={category}, 鸡舍={chickenHouse}, 重量={weight}, 原因=未勾选允许打印");
                         OnLogMessage($"根据规则拒绝打印: 品类={category}, 鸡舍={chickenHouse ?? "未指定"}, 重量={weight}, 原因: {rejectReason}");
                         return;
                     }

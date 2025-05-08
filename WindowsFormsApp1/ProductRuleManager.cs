@@ -551,6 +551,31 @@ namespace WindowsFormsApp1
                 return null;
             }
 
+            // 新增判断：如果只有一个规则符合，并且这个规则的鸡舍号和客户名都为空，没有特殊规则，则直接跳到重量判断
+            if (matchingRules.Count == 1)
+            {
+                var singleRule = matchingRules[0];
+                if (string.IsNullOrEmpty(singleRule.ChickenHouse) &&
+                    string.IsNullOrEmpty(singleRule.CustomerName) &&
+                    (!singleRule.EnableSpecialRules || singleRule.SpecialRules == null || !singleRule.SpecialRules.Any()))
+                {
+                    Logger.Info($"只有一个规则匹配版面 {version}，且该规则鸡舍号和客户名都为空，没有特殊规则，直接进行重量判断");
+
+                    // 直接判断重量
+                    if (singleRule.WeightLowerLimit <= weight && weight <= singleRule.WeightUpperLimit)
+                    {
+                        var duration = (DateTime.Now - startTime).TotalMilliseconds;
+                        Logger.Info($"找到匹配的规则: ID={singleRule.Id}, 品名={singleRule.ProductName}, 规格={singleRule.Specification}, 重量范围=[{singleRule.WeightLowerLimit}-{singleRule.WeightUpperLimit}], 耗时: {duration:F0}ms");
+                        return singleRule;
+                    }
+                    else
+                    {
+                        Logger.Info($"【重量不匹配】规则 ID={singleRule.Id} 的重量范围 [{singleRule.WeightLowerLimit}-{singleRule.WeightUpperLimit}] 不匹配当前重量 {weight}");
+                        return null;
+                    }
+                }
+            }
+
             // 进一步筛选鸡舍号匹配的规则
             var originalRuleCount = matchingRules.Count;
             if (!string.IsNullOrEmpty(chickenHouse))
@@ -567,31 +592,33 @@ namespace WindowsFormsApp1
                 }
                 else
                 {
-                    // 如果没有精确匹配，尝试匹配没有指定鸡舍号的规则
-                    var nullChickenHouseRules = matchingRules.Where(r => string.IsNullOrEmpty(r.ChickenHouse)).ToList();
-                    if (nullChickenHouseRules.Any())
+                    // 如果规则指定了鸡舍号，必须精确匹配才能作为打印的规则
+                    // 不再使用通用规则作为回退选项
+                    Logger.Info($"【匹配失败】未找到精确匹配鸡舍号 {chickenHouse} 的规则");
+                    if (originalRuleCount > 0)
                     {
-                        Logger.Info($"未找到精确匹配鸡舍号的规则，使用通用鸡舍号规则: {nullChickenHouseRules.Count} 条");
-                        matchingRules = nullChickenHouseRules;
-                    }
-                    else
-                    {
-                        Logger.Info($"【匹配失败】既没有精确匹配鸡舍号 {chickenHouse} 的规则，也没有通用鸡舍号规则");
-                        if (originalRuleCount > 0)
-                        {
-                            // 列出所有可用的鸡舍号
-                            var availableChickenHouses = matchingRules
-                                .Where(r => !string.IsNullOrEmpty(r.ChickenHouse))
-                                .Select(r => r.ChickenHouse)
-                                .Distinct()
-                                .ToList();
+                        // 列出所有可用的鸡舍号
+                        var availableChickenHouses = matchingRules
+                            .Where(r => !string.IsNullOrEmpty(r.ChickenHouse))
+                            .Select(r => r.ChickenHouse)
+                            .Distinct()
+                            .ToList();
 
-                            if (availableChickenHouses.Any())
-                            {
-                                Logger.Info($"【提示】版面 {version} 有以下鸡舍号的规则: {string.Join(", ", availableChickenHouses)}");
-                            }
+                        if (availableChickenHouses.Any())
+                        {
+                            Logger.Info($"【提示】版面 {version} 有以下鸡舍号的规则: {string.Join(", ", availableChickenHouses)}");
+                        }
+
+                        // 检查是否有通用规则（没有指定鸡舍号的规则）
+                        var nullChickenHouseRules = matchingRules.Where(r => string.IsNullOrEmpty(r.ChickenHouse)).ToList();
+                        if (nullChickenHouseRules.Any())
+                        {
+                            Logger.Info($"【提示】版面 {version} 有 {nullChickenHouseRules.Count} 条通用鸡舍号规则，但根据新要求不再使用");
                         }
                     }
+
+                    // 设置匹配规则为空列表，表示匹配失败
+                    matchingRules = new List<ProductRule>();
                 }
             }
             else
@@ -797,26 +824,30 @@ namespace WindowsFormsApp1
                 Logger.Info($"检查特殊规则 #{index}: 鸡舍={condition.ChickenHouse ?? "未指定"}, 重量范围=[{condition.WeightLowerLimit}-{condition.WeightUpperLimit}], 二维码={condition.QRCode}, 允许打印={condition.AllowPrint}");
 
                 // 检查鸡舍是否匹配
-                if (!string.IsNullOrEmpty(chickenHouse) && !string.IsNullOrEmpty(condition.ChickenHouse) &&
-                    condition.ChickenHouse != chickenHouse)
+                // 如果特殊规则指定了鸡舍号，必须精确匹配
+                if (!string.IsNullOrEmpty(condition.ChickenHouse))
                 {
-                    Logger.Info($"【特殊规则不匹配】特殊规则 #{index} 鸡舍不匹配: 规则鸡舍={condition.ChickenHouse}, 当前鸡舍={chickenHouse}");
-                    continue;
-                }
-                else
-                {
-                    if (string.IsNullOrEmpty(condition.ChickenHouse))
+                    // 如果特殊规则指定了鸡舍号，但没有提供鸡舍号，则不匹配
+                    if (string.IsNullOrEmpty(chickenHouse))
                     {
-                        Logger.Info($"特殊规则 #{index} 未指定鸡舍，适用于所有鸡舍");
+                        Logger.Info($"【特殊规则不匹配】特殊规则 #{index} 指定了鸡舍 {condition.ChickenHouse}，但当前未提供鸡舍信息");
+                        continue;
                     }
-                    else if (string.IsNullOrEmpty(chickenHouse))
+                    // 如果特殊规则指定了鸡舍号，但与提供的鸡舍号不匹配，则不匹配
+                    else if (condition.ChickenHouse != chickenHouse)
                     {
-                        Logger.Info($"特殊规则 #{index} 指定了鸡舍 {condition.ChickenHouse}，但当前未提供鸡舍信息");
+                        Logger.Info($"【特殊规则不匹配】特殊规则 #{index} 鸡舍不匹配: 规则鸡舍={condition.ChickenHouse}, 当前鸡舍={chickenHouse}");
+                        continue;
                     }
                     else
                     {
                         Logger.Info($"特殊规则 #{index} 鸡舍匹配: {condition.ChickenHouse}");
                     }
+                }
+                else
+                {
+                    // 如果特殊规则没有指定鸡舍号，适用于所有鸡舍
+                    Logger.Info($"特殊规则 #{index} 未指定鸡舍，适用于所有鸡舍");
                 }
 
                 // 检查重量范围是否匹配
