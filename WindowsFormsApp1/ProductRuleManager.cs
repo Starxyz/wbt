@@ -551,6 +551,17 @@ namespace WindowsFormsApp1
                 return null;
             }
 
+            // 优化：先筛选允许打印的规则
+            var originalCount = matchingRules.Count;
+            matchingRules = matchingRules.Where(r => r.AllowPrint).ToList();
+            Logger.Info($"按允许打印筛选后的规则数量: {matchingRules.Count}/{originalCount}");
+
+            if (matchingRules.Count == 0)
+            {
+                Logger.Info($"【匹配失败】未找到允许打印的规则，所有规则都设置为不允许打印");
+                return null;
+            }
+
             // 新增判断：如果只有一个规则符合，并且这个规则的鸡舍号和客户名都为空，没有特殊规则，则直接跳到重量判断
             if (matchingRules.Count == 1)
             {
@@ -816,8 +827,18 @@ namespace WindowsFormsApp1
             // 记录日志，帮助调试
             Logger.Info($"开始处理规则 ID={rule.Id} 的特殊规则: 版面={rule.Version}, 鸡舍={chickenHouse ?? "未指定"}, 重量={weight}, 特殊规则数量={rule.SpecialRules.Count}");
 
+            // 优化：先筛选允许打印的特殊规则
+            var allowedSpecialRules = rule.SpecialRules.Where(sr => sr.AllowPrint).ToList();
+            Logger.Info($"允许打印的特殊规则数量: {allowedSpecialRules.Count}/{rule.SpecialRules.Count}");
+
+            if (allowedSpecialRules.Count == 0)
+            {
+                Logger.Info($"规则 ID={rule.Id} 没有允许打印的特殊规则，跳过特殊规则处理");
+                return null;
+            }
+
             int index = 0;
-            foreach (var condition in rule.SpecialRules)
+            foreach (var condition in allowedSpecialRules)
             {
                 index++;
                 // 记录每个特殊规则的详细信息
@@ -877,15 +898,7 @@ namespace WindowsFormsApp1
 
                     var duration = (DateTime.Now - startTime).TotalMilliseconds;
                     Logger.Info($"特殊规则处理完成，找到匹配的特殊规则 #{index}，耗时: {duration:F0}ms");
-
-                    if (!condition.AllowPrint)
-                    {
-                        Logger.Info($"特殊规则 #{index} 设置为拒绝打印: 版面={rule.Version}, 鸡舍={chickenHouse ?? "未指定"}, 重量={weight}");
-                    }
-                    else
-                    {
-                        Logger.Info($"特殊规则 #{index} 设置为允许打印: 版面={rule.Version}, 鸡舍={chickenHouse ?? "未指定"}, 重量={weight}");
-                    }
+                    Logger.Info($"特殊规则 #{index} 设置为允许打印: 版面={rule.Version}, 鸡舍={chickenHouse ?? "未指定"}, 重量={weight}");
 
                     return specialRule;
                 }
@@ -898,14 +911,14 @@ namespace WindowsFormsApp1
             var totalDuration = (DateTime.Now - startTime).TotalMilliseconds;
             Logger.Info($"【特殊规则处理结果】没有找到匹配的特殊规则，耗时: {totalDuration:F0}ms");
 
-            // 列出所有特殊规则的重量范围
-            if (rule.SpecialRules.Any())
+            // 列出所有允许打印的特殊规则的重量范围
+            if (allowedSpecialRules.Any())
             {
-                var availableWeightRanges = rule.SpecialRules
+                var availableWeightRanges = allowedSpecialRules
                     .Select(r => $"[{r.WeightLowerLimit}-{r.WeightUpperLimit}]")
                     .ToList();
 
-                Logger.Info($"【提示】规则 ID={rule.Id} 的特殊规则有以下重量范围: {string.Join(", ", availableWeightRanges)}");
+                Logger.Info($"【提示】规则 ID={rule.Id} 的允许打印的特殊规则有以下重量范围: {string.Join(", ", availableWeightRanges)}");
             }
 
             return null;
