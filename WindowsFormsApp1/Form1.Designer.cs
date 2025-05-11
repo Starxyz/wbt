@@ -168,7 +168,7 @@
             this.Controls.Add(this.btn_select_file);
             this.Controls.Add(this.btn_print);
             this.Name = "Form1";
-            this.Text = "打印控制系统";
+            this.Text = "";
             this.ResumeLayout(false);
             this.PerformLayout();
 

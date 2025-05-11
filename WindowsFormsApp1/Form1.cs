@@ -7,6 +7,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -44,6 +45,12 @@ namespace WindowsFormsApp1
         public Form1()
         {
             InitializeComponent();
+
+            // 获取程序集编译时间作为版本号
+            DateTime buildDate = GetBuildDate();
+            string versionString = buildDate.ToString("yyyyMMdd-HHmm");
+            this.Text = $"打印控制系统 v{versionString}";
+            Logger.Info($"应用程序启动，版本: {versionString}");
 
             var port = int.Parse(ConfigurationManager.AppSettings["TcpPort"]);
             _tcpServer = new TcpServer(port);
@@ -840,6 +847,28 @@ namespace WindowsFormsApp1
         private void btn_print_Click(object sender, EventArgs e)
         {
             Pint_model(1);
+        }
+
+        /// <summary>
+        /// 获取程序集的编译时间
+        /// </summary>
+        /// <returns>编译时间</returns>
+        private DateTime GetBuildDate()
+        {
+            try
+            {
+                // 获取程序集文件路径
+                string filePath = Assembly.GetExecutingAssembly().Location;
+                // 获取文件的链接时间（编译时间）
+                DateTime buildDate = File.GetLastWriteTime(filePath);
+                return buildDate;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "获取编译时间失败");
+                // 如果获取失败，返回当前时间
+                return DateTime.Now;
+            }
         }
 
         private void btn_select_file_Click(object sender, EventArgs e)
