@@ -531,6 +531,116 @@ namespace WindowsFormsApp1
             }
         }
 
+        private void btnUpdateSpecialRule_Click(object sender, EventArgs e)
+        {
+            if (_currentRule == null)
+            {
+                MessageBox.Show("请先选择一个主规则", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (dgvSpecialRules.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("请先选择一个特殊规则条件", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                // 验证输入
+                if (!double.TryParse(txtSpecialWeightLowerLimit.Text, out double lowerLimit))
+                {
+                    MessageBox.Show("特殊规则重量下限必须是有效的数字", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (!double.TryParse(txtSpecialWeightUpperLimit.Text, out double upperLimit))
+                {
+                    MessageBox.Show("特殊规则重量上限必须是有效的数字", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (lowerLimit > upperLimit)
+                {
+                    MessageBox.Show("特殊规则重量下限不能大于重量上限", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(txtSpecialQRCode.Text))
+                {
+                    MessageBox.Show("特殊规则二维码不能为空", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 获取选中的特殊规则条件
+                var selectedCondition = dgvSpecialRules.SelectedRows[0].DataBoundItem as SpecialRuleCondition;
+
+                // 创建新的特殊规则条件（用于检查重复）
+                var updatedCondition = new SpecialRuleCondition
+                {
+                    ChickenHouse = txtSpecialChickenHouse.Text,
+                    WeightLowerLimit = lowerLimit,
+                    WeightUpperLimit = upperLimit,
+                    QRCode = txtSpecialQRCode.Text,
+                    AllowPrint = chkSpecialRejectPrint.Checked
+                };
+
+                // 从当前规则中暂时移除选中的条件，以便检查更新后是否会与其他条件重复
+                _currentRule.SpecialRules.Remove(selectedCondition);
+
+                // 检查特殊规则是否重复
+                if (_ruleManager.IsSpecialRuleConditionDuplicate(_currentRule, updatedCondition))
+                {
+                    // 如果重复，恢复原来的条件
+                    _currentRule.SpecialRules.Add(selectedCondition);
+                    MessageBox.Show("更新失败：已存在相同的特殊规则条件（鸡舍号和重量范围重叠）", "规则重复", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // 更新特殊规则条件的属性
+                selectedCondition.ChickenHouse = updatedCondition.ChickenHouse;
+                selectedCondition.WeightLowerLimit = updatedCondition.WeightLowerLimit;
+                selectedCondition.WeightUpperLimit = updatedCondition.WeightUpperLimit;
+                selectedCondition.QRCode = updatedCondition.QRCode;
+                selectedCondition.AllowPrint = updatedCondition.AllowPrint;
+
+                // 将更新后的条件添加回规则
+                _currentRule.SpecialRules.Add(selectedCondition);
+
+                // 更新规则
+                bool updateSuccess = _ruleManager.UpdateRule(_currentRule);
+                if (!updateSuccess)
+                {
+                    MessageBox.Show("更新失败：更新特殊规则后与其他规则冲突", "规则重复", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                Logger.Info($"更新了规则 {_currentRule.Id} 的特殊规则条件");
+
+                // 刷新特殊规则表格
+                _specialRuleBindingList = new BindingList<SpecialRuleCondition>(_currentRule.SpecialRules);
+                dgvSpecialRules.DataSource = _specialRuleBindingList;
+
+                // 重新选择更新后的条件
+                for (int i = 0; i < dgvSpecialRules.Rows.Count; i++)
+                {
+                    var condition = dgvSpecialRules.Rows[i].DataBoundItem as SpecialRuleCondition;
+                    if (condition == selectedCondition)
+                    {
+                        dgvSpecialRules.Rows[i].Selected = true;
+                        break;
+                    }
+                }
+
+                MessageBox.Show("特殊规则更新成功", "成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "更新特殊规则条件失败");
+                MessageBox.Show($"更新特殊规则条件失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void btnDeleteSpecialRule_Click(object sender, EventArgs e)
         {
             if (_currentRule == null)
@@ -581,6 +691,7 @@ namespace WindowsFormsApp1
             _currentRule = null;
             btnUpdateRule.Enabled = false;
             btnDeleteRule.Enabled = false;
+            btnUpdateSpecialRule.Enabled = false;
             grpSpecialRules.Enabled = false;
             dgvSpecialRules.DataSource = null;
             dgvRules.ClearSelection();
@@ -738,8 +849,16 @@ namespace WindowsFormsApp1
                     // 重置加载标志
                     _isLoading = false;
 
+                    // 启用更新特殊规则按钮
+                    btnUpdateSpecialRule.Enabled = true;
+
                     Logger.Debug($"已选择特殊规则条件: 鸡舍={selectedCondition.ChickenHouse ?? "未指定"}, 重量范围=[{selectedCondition.WeightLowerLimit}-{selectedCondition.WeightUpperLimit}]");
                 }
+            }
+            else
+            {
+                // 禁用更新特殊规则按钮
+                btnUpdateSpecialRule.Enabled = false;
             }
         }
     }

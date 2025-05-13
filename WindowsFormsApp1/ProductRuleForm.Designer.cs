@@ -55,6 +55,7 @@ namespace WindowsFormsApp1
             this.label1 = new System.Windows.Forms.Label();
             this.grpSpecialRules = new System.Windows.Forms.GroupBox();
             this.btnDeleteSpecialRule = new System.Windows.Forms.Button();
+            this.btnUpdateSpecialRule = new System.Windows.Forms.Button();
             this.btnAddSpecialRule = new System.Windows.Forms.Button();
             this.txtSpecialQRCode = new System.Windows.Forms.TextBox();
             this.label13 = new System.Windows.Forms.Label();
@@ -330,6 +331,7 @@ namespace WindowsFormsApp1
             this.grpSpecialRules.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)
             | System.Windows.Forms.AnchorStyles.Right)));
             this.grpSpecialRules.Controls.Add(this.btnDeleteSpecialRule);
+            this.grpSpecialRules.Controls.Add(this.btnUpdateSpecialRule);
             this.grpSpecialRules.Controls.Add(this.btnAddSpecialRule);
             this.grpSpecialRules.Controls.Add(this.txtSpecialQRCode);
             this.grpSpecialRules.Controls.Add(this.label13);
@@ -351,13 +353,24 @@ namespace WindowsFormsApp1
             //
             // btnDeleteSpecialRule
             //
-            this.btnDeleteSpecialRule.Location = new System.Drawing.Point(1026, 120);
+            this.btnDeleteSpecialRule.Location = new System.Drawing.Point(1026, 156);
             this.btnDeleteSpecialRule.Name = "btnDeleteSpecialRule";
             this.btnDeleteSpecialRule.Size = new System.Drawing.Size(120, 30);
             this.btnDeleteSpecialRule.TabIndex = 10;
             this.btnDeleteSpecialRule.Text = "删除特殊规则";
             this.btnDeleteSpecialRule.UseVisualStyleBackColor = true;
             this.btnDeleteSpecialRule.Click += new System.EventHandler(this.btnDeleteSpecialRule_Click);
+            //
+            // btnUpdateSpecialRule
+            //
+            this.btnUpdateSpecialRule.Enabled = false;
+            this.btnUpdateSpecialRule.Location = new System.Drawing.Point(1026, 120);
+            this.btnUpdateSpecialRule.Name = "btnUpdateSpecialRule";
+            this.btnUpdateSpecialRule.Size = new System.Drawing.Size(120, 30);
+            this.btnUpdateSpecialRule.TabIndex = 12;
+            this.btnUpdateSpecialRule.Text = "更新特殊规则";
+            this.btnUpdateSpecialRule.UseVisualStyleBackColor = true;
+            this.btnUpdateSpecialRule.Click += new System.EventHandler(this.btnUpdateSpecialRule_Click);
             //
             // btnAddSpecialRule
             //
@@ -508,6 +521,7 @@ namespace WindowsFormsApp1
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.GroupBox grpSpecialRules;
         private System.Windows.Forms.Button btnDeleteSpecialRule;
+        private System.Windows.Forms.Button btnUpdateSpecialRule;
         private System.Windows.Forms.Button btnAddSpecialRule;
         private System.Windows.Forms.TextBox txtSpecialQRCode;
         private System.Windows.Forms.Label label13;
