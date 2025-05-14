@@ -1065,19 +1065,11 @@ namespace WindowsFormsApp1
                 }
                 else
                 {
-                    // 如果没有精确匹配，尝试匹配没有指定客户名的规则
-                    var nullCustomerRules = rules.Where(r => string.IsNullOrEmpty(r.CustomerName)).ToList();
-                    if (nullCustomerRules.Any())
-                    {
-                        Logger.Info($"未找到精确匹配客户名的规则，使用通用客户名规则: {nullCustomerRules.Count} 条");
-                        matchingRules = nullCustomerRules;
-                    }
-                    else
-                    {
-                        Logger.Info($"【匹配失败】既没有精确匹配客户名 {trimmedCustomerName} 的规则，也没有通用客户名规则");
-                        LogAvailableCustomerNames(rules);
-                        matchingRules = new List<ProductRule>();
-                    }
+                    // 如果规则指定了客户名，必须精确匹配才能作为打印的规则
+                    Logger.Info($"【匹配失败】未找到精确匹配客户名 {trimmedCustomerName} 的规则");
+                    LogAvailableCustomerNames(rules);
+                    // 设置匹配规则为空列表，表示匹配失败
+                    matchingRules = new List<ProductRule>();
                 }
             }
             else
