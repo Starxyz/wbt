@@ -954,12 +954,8 @@ namespace WindowsFormsApp1
             var originalRuleCount = rules.Count;
             List<ProductRule> matchingRules;
 
-            // 特殊处理：如果鸡舍号是字符串"null"，当做不需要匹配鸡舍号处理
-            if (chickenHouse == "null")
-            {
-                Logger.Info($"鸡舍号为字符串\"null\"，视为未提供鸡舍号，只保留没有指定鸡舍号的规则");
-                chickenHouse = null;
-            }
+            // 注意：鸡舍号为字符串"null"的情况已在Form1.cs的OnMessageReceived函数中处理
+            // 此处不再需要特殊处理
 
             if (!string.IsNullOrEmpty(chickenHouse))
             {
@@ -1132,12 +1128,8 @@ namespace WindowsFormsApp1
         /// <returns>匹配的规则，如果没找到则返回null</returns>
         private ProductRule FindRuleMatchingWeight(List<ProductRule> rules, string chickenHouse, double weight)
         {
-            // 特殊处理：如果鸡舍号是字符串"null"，当做不需要匹配鸡舍号处理
-            if (chickenHouse == "null")
-            {
-                Logger.Info($"查找匹配重量的规则时，鸡舍号为字符串\"null\"，视为未提供鸡舍号");
-                chickenHouse = null;
-            }
+            // 注意：鸡舍号为字符串"null"的情况已在Form1.cs的OnMessageReceived函数中处理
+            // 此处不再需要特殊处理
 
             Logger.Info($"筛选后剩余规则数量: {rules.Count}");
 
@@ -1212,12 +1204,8 @@ namespace WindowsFormsApp1
         {
             var startTime = DateTime.Now;
 
-            // 特殊处理：如果鸡舍号是字符串"null"，当做不需要匹配鸡舍号处理
-            if (chickenHouse == "null")
-            {
-                Logger.Info($"特殊规则处理中，鸡舍号为字符串\"null\"，视为未提供鸡舍号");
-                chickenHouse = null;
-            }
+            // 注意：鸡舍号为字符串"null"的情况已在Form1.cs的OnMessageReceived函数中处理
+            // 此处不再需要特殊处理
 
             // 记录日志，帮助调试
             Logger.Info($"开始处理规则 ID={rule.Id} 的特殊规则: 版面={rule.Version}, 鸡舍={chickenHouse ?? "未指定"}, 重量={weight}, 特殊规则数量={rule.SpecialRules.Count}");
