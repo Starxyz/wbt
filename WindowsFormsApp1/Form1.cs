@@ -493,8 +493,18 @@ namespace WindowsFormsApp1
 
                 // 提取消息中的信息
                 string category = parts.Length > 0 ? parts[0] : null;
-                string chickenHouse = parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1] : null;
-                string panelStatus = parts.Length > 2 ? parts[2] : null;
+                string chickenHouse = null;
+                if (parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]))
+                {
+                    // 如果接收到的是字符串"null"，则转换为实际的null值
+                    chickenHouse = parts[1].Equals("null", StringComparison.OrdinalIgnoreCase) ? null : parts[1];
+                }
+                string panelStatus = null;
+                if (parts.Length > 2)
+                {
+                    // 如果接收到的是字符串"null"，则转换为实际的null值
+                    panelStatus = parts[2].Equals("null", StringComparison.OrdinalIgnoreCase) ? null : parts[2];
+                }
 
                 // 提取客户名，如果长度大于20，则设置为null
                 string customerName = null;
