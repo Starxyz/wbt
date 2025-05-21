@@ -22,26 +22,15 @@ namespace WindowsFormsApp1
     public partial class Form1 : Form
     {
         private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
-        public Engine engine = new Engine();//打印机 引擎
-        public LabelFormatDocument format = null;//获取 模板内容
-        private string selectedFilePath = null;
-        private TcpServer _tcpServer;
-        private bool _tcpRunning = false;
-        private bool _templateOpened = false; // 新增标志，表示模板是否已打开
-        private ModbusClient _modbusClient;
-        private bool _modbusConnected = false;
+        private ITcpService _tcpService;
+        private IPrintingService _printingService;
+        private IApplicationOrchestrator _appOrchestrator;
+        private IModbusService _modbusService; 
+        // private bool _templateOpened = false; // Managed by PrintingService
+        // ModbusClient and related fields (_modbusConnected, _modbusKeepAliveTimer, etc.) removed
 
-        // 添加 Modbus 连接保持相关字段
-        private System.Windows.Forms.Timer _modbusKeepAliveTimer;
-        private DateTime _lastModbusActivity = DateTime.MinValue;
-        private int _reconnectAttempts = 0;
-        private const int MAX_RECONNECT_ATTEMPTS = 5;
-        private const int KEEPALIVE_INTERVAL = 3000; // 3 秒检查一次
-
-        private DateTime factoryStartDate;
-
-        private List<PrintTemplate> _templates = new List<PrintTemplate>();
-        private ProductRuleManager _productRuleManager;
+        // private List<PrintTemplate> _templates = new List<PrintTemplate>(); // Managed by PrintingService
+        private ProductRuleManager _productRuleManager; // Will be passed to AppOrchestrator
         public Form1()
         {
             InitializeComponent();
@@ -53,29 +42,39 @@ namespace WindowsFormsApp1
             Logger.Info($"应用程序启动，版本: {versionString}");
 
             var port = int.Parse(ConfigurationManager.AppSettings["TcpPort"]);
-            _tcpServer = new TcpServer(port);
-            _tcpServer.LogMessage += OnLogMessage;
-            _tcpServer.ServerStatusChanged += OnServerStatusChanged;
-            _tcpServer.ConnectionStatusChanged += OnClientConnectionStatusChanged;
-            _tcpServer.MessageReceived += OnMessageReceived;
+            _tcpService = new TcpService(port);
+            _tcpService.MessageReceived += Form1_MessageReceived_Handler;
+            _tcpService.ServerStatusChanged += Form1_ServerStatusChanged_Handler;
+            _tcpService.ClientConnectionChanged += Form1_ClientConnectionChanged_Handler;
+            _tcpService.LogMessageRequested += (msg) => OnLogMessage($"[TcpSvc] {msg}");
             UpdateClientInfo("未连接");
 
-            // 初始化Modbus客户端
-            _modbusClient = new ModbusClient();
-            _modbusClient.IPAddress = ConfigurationManager.AppSettings["ModbusIpAddress"];
-            _modbusClient.Port = int.Parse(ConfigurationManager.AppSettings["ModbusPort"]);
+            // Initialize PrintingService
+            _printingService = new PrintingService();
+            _printingService.LogMessageRequested += (msg) => OnLogMessage($"[PrintSvc] {msg}");
+            _printingService.PrintSuccessOccurred += (msg) => { OnLogMessage(msg); /* TODO: Add any other UI feedback for success */ };
+            _printingService.PrintFailureOccurred += (msg) => { 
+                OnLogMessage(msg); 
+                MessageBox.Show(msg, "Print Error", MessageBoxButtons.OK, MessageBoxIcon.Error); 
+            };
 
-            // 初始化 Modbus 连接保持定时器
-            _modbusKeepAliveTimer = new System.Windows.Forms.Timer();
-            _modbusKeepAliveTimer.Interval = KEEPALIVE_INTERVAL;
-            _modbusKeepAliveTimer.Tick += ModbusKeepAlive_Tick;
-
-            factoryStartDate = DateTime.Parse("2022-01-01");
-
-            LoadTemplates(); // 加载分类模板信息
+            // Initialize ModbusService (IModbusService)
+            string modbusIpAddress = ConfigurationManager.AppSettings["ModbusIpAddress"];
+            int modbusPortNumber = int.Parse(ConfigurationManager.AppSettings["ModbusPort"]);
+            _modbusService = new ModbusService(modbusIpAddress, modbusPortNumber);
+            _modbusService.ConnectionStatusChanged += OnModbusConnectionStatusChanged;
+            _modbusService.LogMessageRequested += (msg) => OnLogMessage($"[ModbusSvc] {msg}");
+            // UpdateWeightDisplay("--.-"); // Initial state for weight
 
             // 初始化产品规则管理器，程序启动时重置所有规则的允许打印状态为不允许打印
-            _productRuleManager = new ProductRuleManager(resetAllowPrintStatus: true);
+            _productRuleManager = new ProductRuleManager(resetAllowPrintStatus: true); // Must be initialized before AppOrchestrator
+
+            // Initialize ApplicationOrchestrator
+            _appOrchestrator = new ApplicationOrchestrator(_modbusService, _productRuleManager, _printingService);
+            _appOrchestrator.LogMessageRequested += (msg) => OnLogMessage($"[Orchestrator] {msg}");
+            _appOrchestrator.DetailedMatchFailureLogRequested += (msg) => OnLogMessage($"[OrchestratorDetail] {msg}");
+            _appOrchestrator.WeightAvailable += Form1_WeightAvailable_Handler;
+
 
             // 使用Timer在UI初始化完成后执行自动启动操作
             System.Windows.Forms.Timer startupTimer = new System.Windows.Forms.Timer();
@@ -90,11 +89,19 @@ namespace WindowsFormsApp1
             ((System.Windows.Forms.Timer)sender).Stop();
 
             // 执行自动启动操作（并行执行以提高效率）
+            // Fetch default template path from config for AutoLoadDefaultTemplateAsync
+            string defaultTemplatePathConfigValue = Application.StartupPath + "\\" + ConfigurationManager.AppSettings["DefaultTemplatePath"];
+            if (string.IsNullOrEmpty(ConfigurationManager.AppSettings["DefaultTemplatePath"]))
+            {
+                 defaultTemplatePathConfigValue = Path.Combine(Application.StartupPath, "default.btw");
+            }
+
+
             var tasks = new List<Task>
             {
                 AutoStartTcpServerAsync(),
                 AutoConnectModbusAsync(),
-                AutoLoadDefaultTemplateAsync()
+                _printingService.AutoLoadDefaultTemplateAsync(defaultTemplatePathConfigValue)
             };
 
             // 等待所有任务完成
@@ -106,11 +113,23 @@ namespace WindowsFormsApp1
         // 自动启动TCP服务器
         private async Task AutoStartTcpServerAsync()
         {
-            if (!_tcpRunning)
+            if (!_tcpService.IsRunning) // Check IsRunning from the service
             {
-                btnTcpControl.Enabled = false;
-                await ToggleTcpServerAsync(true);
-                btnTcpControl.Enabled = true;
+                btnTcpControl.Enabled = false; // Disable button during operation
+                try
+                {
+                    await _tcpService.StartAsync();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "自动启动TCP服务失败");
+                    OnLogMessage($"自动启动TCP服务失败: {ex.Message}");
+                    // UI update will be handled by Form1_ServerStatusChanged_Handler
+                }
+                finally
+                {
+                    btnTcpControl.Enabled = true; // Re-enable button
+                }
             }
         }
 
@@ -120,180 +139,18 @@ namespace WindowsFormsApp1
         {
             try
             {
-                await ConnectModbusAsync();
-                btnModbusControl.Text = "断开Modbus";
-                OnLogMessage("Modbus已自动连接");
+                await _modbusService.ConnectAsync();
+                // UI update will be handled by OnModbusConnectionStatusChanged
+                // OnLogMessage("Modbus已自动连接"); // Logged by ModbusService
             }
-            catch (Exception ex)
+            catch (Exception ex) // Should be rare if ModbusService handles its own exceptions
             {
-                Logger.Error(ex, "自动连接Modbus失败");
-                OnLogMessage($"自动连接Modbus失败: {ex.Message}");
+                Logger.Error(ex, "自动连接Modbus时发生未预料的错误");
+                OnLogMessage($"自动连接Modbus时发生未预料的错误: {ex.Message}");
             }
         }
 
-        // 异步加载默认打印模板
-        private async Task AutoLoadDefaultTemplateAsync()
-        {
-            try
-            {
-                // 从配置文件获取默认打印模板路径
-                string configTemplatePath = Application.StartupPath + "\\" + ConfigurationManager.AppSettings["DefaultTemplatePath"];
-                string defaultTemplatePath = !string.IsNullOrEmpty(configTemplatePath)
-                    ? configTemplatePath
-                    : Path.Combine(Application.StartupPath, "default.btw");
-
-                if (File.Exists(defaultTemplatePath))
-                {
-                    OnLogMessage($"开始加载默认模板: {defaultTemplatePath}");
-
-                    // 使用Task.Run将耗时操作放入后台线程
-                    await Task.Run(() => {
-                        try
-                        {
-                            if (!engine.IsAlive)
-                                engine.Start();
-
-                            format = engine.Documents.Open(defaultTemplatePath);
-                            _templateOpened = true;
-                            selectedFilePath = defaultTemplatePath;
-                        }
-                        catch (Exception ex)
-                        {
-                            throw ex; // 重新抛出异常以便在外层捕获
-                        }
-                    });
-
-                    OnLogMessage($"默认模板已成功加载: {defaultTemplatePath}");
-                }
-                else
-                {
-                    Logger.Warn("默认模板文件不存在: " + defaultTemplatePath);
-                    OnLogMessage("默认模板文件不存在: " + defaultTemplatePath);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "自动加载默认模板失败");
-                OnLogMessage($"自动加载默认模板失败: {ex.Message}");
-            }
-        }
-
-        private void LoadTemplates()
-        {
-            try
-            {
-                string json = File.ReadAllText("templates.json", Encoding.UTF8);
-                _templates = JsonConvert.DeserializeObject<List<PrintTemplate>>(json);
-                Logger.Info($"模板文件加载成功，共{_templates.Count}个模板");
-                OnLogMessage("模板文件加载成功，共" + _templates.Count + "个模板");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "加载模板文件失败");
-                MessageBox.Show("加载模板文件失败：" + ex.Message);
-                OnLogMessage("加载模板文件失败：" + ex.Message);
-            }
-        }
-
-        private PrintTemplate FindTemplateByKey(string key)
-        {
-            return _templates.FirstOrDefault(t => t.key == key);
-        }
-
-
-        // Modbus 连接保持检查方法
-        private void ModbusKeepAlive_Tick(object sender, EventArgs e)
-        {
-            // 如果超过 KEEPALIVE_INTERVAL 毫秒没有活动，则执行心跳检查
-            if ((DateTime.Now - _lastModbusActivity).TotalMilliseconds >= KEEPALIVE_INTERVAL)
-            {
-                Logger.Debug("执行 Modbus 连接保持检查");
-                PerformModbusHeartbeat();
-            }
-        }
-
-        // 执行 Modbus 心跳操作
-        private void PerformModbusHeartbeat()
-        {
-            try
-            {
-                // 检查是否已连接
-                if (_modbusClient == null || !_modbusClient.Connected)
-                {
-                    Logger.Info("Modbus 连接已断开，尝试重新连接...");
-                    ReconnectModbusClient();
-                    return;
-                }
-
-                // 执行简单的读取操作作为心跳
-                _modbusClient.ReadHoldingRegisters(0, 1);
-
-                // 更新最后活动时间戳
-                _lastModbusActivity = DateTime.Now;
-                _reconnectAttempts = 0; // 成功操作后重置重连计数器
-
-                Logger.Debug("Modbus 连接保持成功");
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"Modbus 连接保持失败: {ex.Message}");
-                ReconnectModbusClient();
-            }
-        }
-
-        // 处理 Modbus 重新连接
-        private void ReconnectModbusClient()
-        {
-            if (_reconnectAttempts >= MAX_RECONNECT_ATTEMPTS)
-            {
-                Logger.Error($"在 {MAX_RECONNECT_ATTEMPTS} 次尝试后无法重新连接到 Modbus");
-                _modbusKeepAliveTimer.Stop();
-                UpdateWeightDisplay("--.-"); // 显示连接断开
-
-
-                // 更新 UI 以反映断开状态
-                if (_modbusConnected)
-                {
-                    _modbusConnected = false;
-                    if (btnModbusControl.InvokeRequired)
-                    {
-                        btnModbusControl.Invoke(new Action(() => btnModbusControl.Text = "连接Modbus"));
-                    }
-                    else
-                    {
-                        btnModbusControl.Text = "连接Modbus";
-                    }
-                }
-                return;
-            }
-
-            _reconnectAttempts++;
-
-            try
-            {
-                // 如果存在，关闭现有连接
-                if (_modbusClient != null && _modbusClient.Connected)
-                {
-                    _modbusClient.Disconnect();
-                }
-
-                // 在重新连接之前等待一段时间（每次尝试增加延迟）
-                int delay = 500 * _reconnectAttempts;
-                Logger.Info($"等待 {delay}ms 后进行第 {_reconnectAttempts} 次重连尝试");
-                System.Threading.Thread.Sleep(delay);
-
-                // 重新连接
-                _modbusClient.Connect();
-                _lastModbusActivity = DateTime.Now;
-                _modbusConnected = true;
-
-                Logger.Info("成功重新连接到 Modbus");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"第 {_reconnectAttempts} 次重连尝试失败: {ex.Message}");
-            }
-        }
+        // ModbusKeepAlive_Tick, PerformModbusHeartbeat, ReconnectModbusClient are removed (handled by ModbusService)
 
         // 日志最大行数，超过这个数量将清除旧日志
         private const int MAX_LOG_LINES = 1000;
@@ -339,36 +196,33 @@ namespace WindowsFormsApp1
             txtLog.ScrollToCaret();
         }
 
-        private void OnServerStatusChanged(bool started)
+        private void Form1_ServerStatusChanged_Handler(bool isRunning, string endpointInfo)
         {
             if (this.InvokeRequired)
             {
-                this.Invoke(new Action<bool>(OnServerStatusChanged), started);
+                this.Invoke(new Action<bool, string>(Form1_ServerStatusChanged_Handler), isRunning, endpointInfo);
                 return;
             }
-
-            lblTcpStatus.Text = started ? $"TCP: {_tcpServer.Endpoint}" : "TCP: 未启动";
-            lblServerInfo.Text = started ? $"服务器: {_tcpServer.Endpoint}" : "服务器: 未启动";
+            lblTcpStatus.Text = isRunning ? $"TCP: {endpointInfo}" : "TCP: 未启动";
+            lblServerInfo.Text = isRunning ? $"服务器: {endpointInfo}" : "服务器: 未启动";
+            btnTcpControl.Text = isRunning ? "停止TCP" : "启动TCP";
+            // OnLogMessage($"TCP Server status: {(isRunning ? "Running" : "Stopped")} on {endpointInfo}"); // Logged by TcpService
         }
 
-        private void OnClientConnectionStatusChanged(bool connected)
+        private void Form1_ClientConnectionChanged_Handler(bool isConnected, string clientInfo)
         {
             if (this.InvokeRequired)
             {
-                this.Invoke(new Action<bool>(OnClientConnectionStatusChanged), connected);
+                this.Invoke(new Action<bool, string>(Form1_ClientConnectionChanged_Handler), isConnected, clientInfo);
                 return;
             }
-
-            if (connected)
+            // This provides generic connected/disconnected status.
+            // Specific client IP for lblClientInfo is updated by "CONNECT|" message in Form1_MessageReceived_Handler.
+            if (!isConnected)
             {
-                // 客户端连接时，我们还不知道具体的客户端信息
-                // 这个信息会在MessageReceived事件中通过CONNECT消息提供
-                UpdateClientInfo("已连接");
+                UpdateClientInfo("未连接"); // Reset if the service indicates a disconnection
             }
-            else
-            {
-                UpdateClientInfo("未连接");
-            }
+            // OnLogMessage($"TCP Client status: {(isConnected ? "Connected" : "Disconnected")}. Info: {clientInfo}"); // Logged by TcpService
         }
         private void UpdateClientInfo(string clientInfo)
         {
@@ -392,471 +246,61 @@ namespace WindowsFormsApp1
             }
         }
 
-        // 修改后的 GetWeightFunction 方法，以使用连接保持机制
-        private string GetWeightFunction()
+        // GetWeightFunction removed (handled by ModbusService, accessed via Orchestrator)
+
+        // Renamed from OnMessageReceived to Form1_MessageReceived_Handler
+        // Now delegates core processing to ApplicationOrchestrator
+        private async void Form1_MessageReceived_Handler(string message)
         {
-            try
+            // Logger.Debug($"Form1_MessageReceived_Handler received: {message}"); // Logged by TcpService
+
+            if (message.StartsWith("CONNECT|"))
             {
-                // 检查是否已连接，如果没有则连接
-                if (_modbusClient == null || !_modbusClient.Connected)
-                {
-                    Logger.Info("Modbus 未连接，正在尝试连接...");
-
-                    if (_modbusClient == null)
-                    {
-                        _modbusClient = new ModbusClient(_modbusClient.IPAddress, _modbusClient.Port); // 请替换为您的实际 IP 和端口
-                        _modbusClient.ConnectionTimeout = 5000; // 设置超时时间为5秒
-                    }
-
-                    try
-                    {
-                        _modbusClient.Connect();
-                        _modbusConnected = true;
-                        _lastModbusActivity = DateTime.Now; // 更新活动时间戳
-
-                        // 如果尚未运行，则启动连接保持定时器
-                        if (!_modbusKeepAliveTimer.Enabled)
-                        {
-                            _modbusKeepAliveTimer.Start();
-                        }
-
-                        Logger.Info("成功连接到 Modbus 设备");
-                    }
-                    catch (Exception connEx)
-                    {
-                        Logger.Error(connEx, "连接 Modbus 设备失败");
-                        UpdateWeightDisplay("--.-"); // 显示错误状态
-                        return "--.-";
-                    }
-                }
-
-                // 读取单个保持寄存器
-                int[] result = _modbusClient.ReadHoldingRegisters(0, 10);
-                Logger.Info($"读取到原始值: {result[0]}");
-
-                // 更新最后活动时间戳
-                _lastModbusActivity = DateTime.Now;
-
-                // 获取原始寄存器值
-                int rawValue = result[0]; // 例如 1820
-                string formattedValue = (rawValue / 1000.0).ToString("F2"); // "18.20"
-
-                // 更新显示
-                UpdateWeightDisplay(formattedValue);
-
-                return formattedValue;
+                string clientInfo = message.Substring(8); // 去掉"CONNECT|"前缀
+                // Logger.Debug($"接收到客户端连接消息，客户端信息: {clientInfo}"); // Logged by TcpService
+                UpdateClientInfo(clientInfo);
+                return;
             }
-            catch (Exception ex)
+            else if (message == "DISCONNECT")
             {
-                Logger.Error(ex, "读取重量失败");
-
-                // 让连接保持机制处理重新连接
-                ReconnectModbusClient();
-
-                UpdateWeightDisplay("--.-"); // 显示错误状态
-                return "--.-";
-            }
-        }
-
-        private void OnMessageReceived(string message)
-        {
-            Logger.Debug($"开始处理接收到的消息: {message}");
-            try
-            {
-                if (string.IsNullOrWhiteSpace(message))
-                {
-                    Logger.Warn("接收到空消息，忽略处理");
-                    return;
-                }
-
-                // 检查是否是连接/断开消息
-                if (message.StartsWith("CONNECT|"))
-                {
-                    string clientInfo = message.Substring(8); // 去掉"CONNECT|"前缀
-                    Logger.Debug($"接收到客户端连接消息，客户端信息: {clientInfo}");
-                    UpdateClientInfo(clientInfo);
-                    // 不再添加日志，因为TcpServer.cs中已经添加了
-                    return;
-                }
-                else if (message == "DISCONNECT")
-                {
-                    Logger.Debug("接收到客户端断开消息");
-                    UpdateClientInfo("未连接");
-                    // 不再添加日志，因为TcpServer.cs中已经添加了
-                    return;
-                }
-
-                // 解析消息
-                // 格式：品类|鸡舍|版面状态|客户名
-                var parts = message.Split(new[] { '|' }, StringSplitOptions.None);
-                Logger.Debug($"消息解析为 {parts.Length} 个部分");
-
-                // 提取消息中的信息
-                string category = parts.Length > 0 ? parts[0] : null;
-                string chickenHouse = null;
-                if (parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]))
-                {
-                    // 如果接收到的是字符串"null"，则转换为实际的null值
-                    chickenHouse = parts[1].Equals("null", StringComparison.OrdinalIgnoreCase) ? null : parts[1];
-                }
-                string panelStatus = null;
-                if (parts.Length > 2)
-                {
-                    // 如果接收到的是字符串"null"，则转换为实际的null值
-                    panelStatus = parts[2].Equals("null", StringComparison.OrdinalIgnoreCase) ? null : parts[2];
-                }
-
-                // 提取客户名，如果长度大于20，则设置为null
-                string customerName = null;
-                if (parts.Length > 3 && !string.IsNullOrWhiteSpace(parts[3]) && !parts[3].Equals("null", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (parts[3].Length <= 20)
-                    {
-                        customerName = parts[3];
-                    }
-                    else
-                    {
-                        Logger.Warn($"客户名长度超过20个字符，已忽略: {parts[3]}");
-                    }
-                }
-
-                // 记录接收到的消息
-                Logger.Info($"接收到消息: 品类={category}, 鸡舍={chickenHouse}, 版面状态={panelStatus}, 客户名={customerName}");
-                OnLogMessage($"接收到消息: 品类={category}, 鸡舍={chickenHouse}, 版面状态={panelStatus}");
-
-
-
-                // 如果没有品类，无法处理
-                if (string.IsNullOrWhiteSpace(category))
-                {
-                    string rejectReason = "消息中缺少品类信息，无法确定打印模板";
-                    Logger.Warn("消息中缺少品类信息，无法处理");
-                    OnLogMessage($"不执行打印，原因: {rejectReason}");
-                    return;
-                }
-
-                // 检查版面状态，如果为0则不打印
-                if (panelStatus == "0")
-                {
-                    string rejectReason = "版面状态为0，表示不需要打印";
-                    Logger.Debug("版面状态为0，不执行打印");
-                    OnLogMessage($"不执行打印，原因: {rejectReason}");
-                    return;
-                }
-
-                // 获取重量
-                Logger.Debug("开始获取重量数据");
-                string weightStr = GetWeightFunction().Trim();
-                Logger.Debug($"获取到重量数据: {weightStr}");
-
-                if (weightStr == "--.-" || !double.TryParse(weightStr.Replace(',', '.'),
-                                     NumberStyles.Any,
-                                     CultureInfo.InvariantCulture,
-                                     out double weight))
-                {
-                    string rejectReason = $"无法获取有效重量值: {weightStr}，请检查称重设备连接";
-                    Logger.Warn($"无法获取有效重量: {weightStr}");
-                    OnLogMessage($"不执行打印，原因: {rejectReason}");
-                    return;
-                }
-
-                // 使用新的产品规则管理器查找匹配的规则
-                // 注意：我们使用category（品类）作为版面信息，而不是panelStatus
-                Logger.Info($"开始查找匹配规则: 品类={category}, 鸡舍={chickenHouse}, 客户名={customerName}, 重量={weight}");
-                OnLogMessage($"开始查找匹配规则: 品类={category}, 鸡舍={chickenHouse ?? "未指定"}, 客户名={customerName ?? "未指定"}, 重量={weight}");
-                var matchResult = _productRuleManager.FindMatchingRule(category, chickenHouse, customerName, weight);
-
-                if (matchResult.IsSuccess)
-                {
-                    var matchedRule = matchResult.MatchedRule;
-                    Logger.Info($"找到匹配规则: ID={matchedRule.Id}, 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}");
-                    // 记录匹配ID号，同时使用原始消息内容
-                    string logMessage = $"接收到的（消息：{message}，匹配ID号{matchedRule.Id}）";
-                    Logger.Info(logMessage);
-                    OnLogMessage(logMessage);
-
-                    // 注意：不再需要检查是否允许打印，因为FindMatchingRule方法已经筛选了允许打印的规则
-
-                    // 打印
-                    string traceabilityCode = GenerateTraceabilityCode();
-                    Logger.Info($"生成追溯码: {traceabilityCode}");
-
-                    Logger.Info($"开始执行打印: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 重量={weightStr}, 二维码={matchedRule.QRCode}");
-                    Pint_model(1,
-                               matchedRule.ProductName,
-                               matchedRule.Specification,
-                               weightStr,
-                               traceabilityCode,
-                               matchedRule.QRCode);
-
-                    Logger.Info($"使用规则 {matchedRule.Id} 打印: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 二维码={matchedRule.QRCode}, 重量={weightStr}");
-                    OnLogMessage($"打印成功: 品名={matchedRule.ProductName}, 规格={matchedRule.Specification}, 重量={weightStr}");
-                }
-                else
-                {
-                    string rejectReason = $"未找到匹配规则，品类={category}, 鸡舍={chickenHouse ?? "未指定"}, 客户名={customerName ?? "未指定"}, 重量={weight}";
-                    Logger.Info($"未找到匹配规则: 品类={category}, 鸡舍={chickenHouse ?? "未指定"}, 客户名={customerName ?? "未指定"}, 重量={weight}");
-
-                    // 显示更详细的失败原因到界面
-                    OnLogMessage($"【匹配失败】不执行打印，原因: {rejectReason}");
-                    // 记录匹配失败，同时使用原始消息内容
-                    string logMessage = $"接收到的（消息：{message}，未匹配到规则）";
-                    Logger.Info(logMessage);
-                    OnLogMessage(logMessage);
-
-                    // 如果有详细的失败原因，也显示出来
-                    if (!string.IsNullOrEmpty(matchResult.FailureReason))
-                    {
-                        OnLogMessage($"【详细原因】{matchResult.FailureReason}");
-                    }
-
-                    // 如果没有找到匹配的规则，尝试使用旧的模板方式
-                    //ProcessMessageWithLegacyMethod(category, chickenHouse, panelStatus, weightStr);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "处理接收消息时出错");
-                OnLogMessage($"处理消息出错: {ex.Message}");
-            }
-            finally
-            {
-                Logger.Debug("消息处理完成");
-            }
-        }
-
-        private void ProcessMessageWithLegacyMethod(string key, string slot, string status, string weightStr)
-        {
-            Logger.Debug($"开始使用旧方法处理消息: 品类={key}, 鸡舍={slot}, 版面状态={status}, 重量={weightStr}");
-            try
-            {
-                // 旧的处理逻辑
-                if (string.IsNullOrWhiteSpace(key))
-                {
-                    Logger.Warn("品类为空，无法处理");
-                    return;
-                }
-
-                if (status == "0")
-                {
-                    string rejectReason = "版面状态为0，表示不需要打印";
-                    Logger.Debug("版面状态为0，不执行打印");
-                    OnLogMessage($"不执行打印，原因: {rejectReason}");
-                    return;
-                }
-
-                // ② slot 是否有效
-                bool hasSlot = !string.IsNullOrWhiteSpace(slot) &&
-                               !slot.Equals("null", StringComparison.OrdinalIgnoreCase);
-                Logger.Debug($"鸡舍是否有效: {hasSlot}");
-
-                // ③ xmyjpxjd360 + slot 无效 → 不打印
-                if (key.Equals("xmyjpxjd360", StringComparison.OrdinalIgnoreCase) && !hasSlot)
-                {
-                    string rejectReason = "品类为xmyjpxjd360但鸡舍信息无效，此品类需要有效的鸡舍信息";
-                    Logger.Debug("品类为xmyjpxjd360且鸡舍无效，不执行打印");
-                    OnLogMessage($"不执行打印，原因: {rejectReason}");
-                    return;
-                }
-
-                string templateKey = hasSlot ? $"{key}-{slot}" : key;
-                Logger.Debug($"生成模板键: {templateKey}");
-
-                string qrOverride = null;        // 默认不改二维码
-
-                // ⑤ 如为 xmyjpxjd360 → 区间 + 二维码校验
-                if (key.Equals("xmyjpxjd360", StringComparison.OrdinalIgnoreCase))
-                {
-                    Logger.Debug("品类为xmyjpxjd360，进行重量区间和二维码校验");
-
-                    if (!double.TryParse(weightStr.Replace(',', '.'),
-                                         NumberStyles.Any,
-                                         CultureInfo.InvariantCulture,
-                                         out double w))
-                    {
-                        string rejectReason = $"无法解析重量值: {weightStr}，请检查重量数据格式";
-                        Logger.Warn($"无法解析重量: {weightStr}");
-                        OnLogMessage($"不执行打印，原因: {rejectReason}");
-                        return;
-                    }
-
-                    Logger.Debug($"解析后的重量值: {w}");
-
-                    if (w >= 20.5 && w <= 21.1)
-                    {
-                        qrOverride = "1790";
-                        Logger.Debug($"重量 {w} 在区间 [20.5-21.1]，使用二维码: 1790");
-                    }
-                    else if (w >= 22.0 && w <= 22.4)
-                    {
-                        qrOverride = "1791";
-                        Logger.Debug($"重量 {w} 在区间 [22.0-22.4]，使用二维码: 1791");
-                    }
-                    else if (w >= 23.9 && w <= 24.1)
-                    {
-                        qrOverride = "1792";
-                        Logger.Debug($"重量 {w} 在区间 [23.9-24.1]，使用二维码: 1792");
-                    }
-                    else if (w >= 15.8 && w <= 16.6)
-                    {
-                        qrOverride = "1793";
-                        Logger.Debug($"重量 {w} 在区间 [15.8-16.6]，使用二维码: 1793");
-                    }
-                    else
-                    {
-                        string rejectReason = $"重量 {w} 不在任何指定区间内 (有效区间: [20.5-21.1], [22.0-22.4], [23.9-24.1], [15.8-16.6])";
-                        Logger.Debug($"重量 {w} 不在任何指定区间内，不执行打印");
-                        OnLogMessage($"不执行打印，原因: {rejectReason}");
-                        return;
-                    }                // 不在三段区间 → 不打印
-                }
-
-                // ⑥ 打印
-                Logger.Debug($"开始使用模板打印: 模板={templateKey}, 重量={weightStr}, 二维码={qrOverride ?? "默认"}");
-                PrintTemplate(templateKey, weightStr, qrOverride);
-                Logger.Info($"使用旧方法打印: 模板={templateKey}, 重量={weightStr}, 二维码={qrOverride ?? "默认"}");
-                OnLogMessage($"使用旧方法打印: 模板={templateKey}");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "使用旧方法处理消息时出错");
-                OnLogMessage($"使用旧方法处理消息时出错: {ex.Message}");
-            }
-            finally
-            {
-                Logger.Debug("旧方法处理消息完成");
-            }
-        }
-
-
-
-
-
-        private void PrintTemplate(string key, string weight, string overrideQrCode = null)
-        {
-            Logger.Debug($"开始查找模板: {key}");
-            var tpl = FindTemplateByKey(key);
-            if (tpl != null)
-            {
-                Logger.Debug($"找到模板: {key}, 品名={tpl.productName}, 规格={tpl.spec}, 默认二维码={tpl.qrcode}");
-
-                string traceabilityCode = GenerateTraceabilityCode();
-                Logger.Debug($"生成追溯码: {traceabilityCode}");
-
-                string qrCodeToUse = overrideQrCode ?? tpl.qrcode;
-                Logger.Debug($"使用二维码: {qrCodeToUse}" + (overrideQrCode != null ? " (覆盖默认值)" : " (使用默认值)"));
-
-                Logger.Debug($"开始执行打印: 品名={tpl.productName}, 规格={tpl.spec}, 重量={weight}, 二维码={qrCodeToUse}");
-                Pint_model(1,
-                           tpl.productName,
-                           tpl.spec,
-                           weight,
-                           traceabilityCode,
-                           qrCodeToUse);
-
-                Logger.Info($"模板打印成功: 模板={key}, 品名={tpl.productName}, 规格={tpl.spec}, 重量={weight}, 二维码={qrCodeToUse}");
-            }
-            else
-            {
-                string rejectReason = $"未找到匹配的打印模板: {key}，请检查模板配置";
-                Logger.Warn($"未找到模板: {key}");
-                OnLogMessage($"不执行打印，原因: {rejectReason}");
-            }
-        }
-
-
-
-        public void Pint_model(int printnum, string productName = "46无抗鲜鸡蛋",
-                             string spec = "360枚", string weight = "12",
-                             string date = "20250204", string qrCode = "8879")
-        {
-            var startTime = DateTime.Now;
-            Logger.Info($"开始打印任务: 数量={printnum}, 品名={productName}, 规格={spec}, 重量={weight}, 日期={date}, 二维码={qrCode}");
-
-            // 检查模板是否已打开
-            if (!_templateOpened || format == null)
-            {
-                Logger.Error("模板未打开，请先选择并加载模板文件");
-                OnLogMessage("错误: 模板未打开，请先选择并加载模板文件");
-                MessageBox.Show("请先选择并加载模板文件", "错误",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                // Logger.Debug("接收到客户端断开消息"); // Logged by TcpService
+                UpdateClientInfo("未连接");
                 return;
             }
 
-            btn_print.Enabled = false;
-            Logger.Debug("禁用打印按钮，防止重复点击");
+            // For all other messages, delegate to the orchestrator
+            // This runs the orchestrator's processing asynchronously
+            await _appOrchestrator.ProcessIncomingMessageAsync(message);
+        }
 
+        // ProcessMessageWithLegacyMethod is removed from Form1, now inside ApplicationOrchestrator
+
+        // btn_print_Click still uses PrintingService directly, as it's a UI-initiated action
+        // not directly tied to an incoming TCP message processed by orchestrator.
+        private async void btn_print_Click(object sender, EventArgs e)
+        {
+            // Example: Create a default PrintJobData or get values from UI if available
+            PrintJobData jobData = new PrintJobData
+            {
+                ProductName = "46无抗鲜鸡蛋", // Example value
+                Specification = "360枚",    // Example value
+                Weight = "12",            // Example value
+                DateCode = TraceabilityCodeGenerator.GenerateTraceabilityCode(), // Use current date/logic
+                QrCode = "8879",          // Example value
+                Quantity = 1              // Example value
+            };
+
+            btn_print.Enabled = false;
+            Logger.Debug("禁用打印按钮，防止重复点击 (manual print)");
             try
             {
-                // 确保引擎在运行
-                if (!engine.IsAlive)
-                {
-                    Logger.Debug("打印引擎未运行，正在启动...");
-                    engine.Start();
-                    Logger.Debug("打印引擎启动成功");
-                }
-                else
-                {
-                    Logger.Debug("打印引擎已在运行状态");
-                }
-
-                for (int i = 0; i < printnum; i++)
-                {
-                    var itemStartTime = DateTime.Now;
-                    Logger.Debug($"开始打印第 {i + 1}/{printnum} 份");
-
-                    try
-                    {
-                        // 设置打印数据
-                        Logger.Debug("开始设置打印数据...");
-                        format.SubStrings["品名"].Value = $"品名：{productName}";
-                        format.SubStrings["规格"].Value = $"规格：{spec}";
-                        format.SubStrings["斤数"].Value = $"{weight} ";
-                        format.SubStrings["生产日期"].Value = $"{date}";
-                        format.SubStrings["二维码"].Value = qrCode;
-                        Logger.Debug("打印数据设置完成");
-
-                        // 执行打印
-                        Logger.Debug("开始执行打印...");
-                        Result rel = format.Print(); // 获取打印状态
-
-                        if (rel == Result.Success)
-                        {
-                            var itemDuration = (DateTime.Now - itemStartTime).TotalMilliseconds;
-                            Logger.Info($"第 {i + 1}/{printnum} 份打印成功，耗时: {itemDuration:F0}ms");
-                        }
-                        else
-                        {
-                            Logger.Error($"第 {i + 1}/{printnum} 份打印失败，返回状态: {rel}");
-                            OnLogMessage($"第 {i + 1}/{printnum} 份打印失败");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error(ex, $"第 {i + 1}/{printnum} 份打印异常: {ex.Message}");
-                        OnLogMessage($"第 {i + 1}/{printnum} 份打印异常: {ex.Message}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, $"打印过程中发生异常: {ex.Message}");
-                OnLogMessage($"打印过程中发生异常: {ex.Message}");
+                await _printingService.ExecutePrintJobAsync(jobData);
             }
             finally
             {
                 btn_print.Enabled = true;
-                Logger.Debug("启用打印按钮");
-
-                var totalDuration = (DateTime.Now - startTime).TotalMilliseconds;
-                Logger.Info($"打印任务完成，总耗时: {totalDuration:F0}ms，打印数量: {printnum}");
-                OnLogMessage($"打印任务完成，共 {printnum} 份");
+                Logger.Debug("启用打印按钮 (manual print)");
             }
-        }
-
-        private void btn_print_Click(object sender, EventArgs e)
-        {
-            Pint_model(1);
         }
 
         /// <summary>
@@ -881,243 +325,102 @@ namespace WindowsFormsApp1
             }
         }
 
-        private void btn_select_file_Click(object sender, EventArgs e)
+        private async void btn_select_file_Click(object sender, EventArgs e)
         {
             Logger.Debug("开始选择文件");
-            // 创建 OpenFileDialog 实例
             using (OpenFileDialog openFileDialog = new OpenFileDialog())
             {
-                // 设置初始目录为程序运行目录
                 openFileDialog.InitialDirectory = Application.StartupPath;
-
-                // 可选：设置对话框标题
-                openFileDialog.Title = "请选择文件";
-
-                // 可选：设置文件过滤器
+                openFileDialog.Title = "请选择BarTender模板文件";
                 openFileDialog.Filter = "BarTender 模板文件 (*.btw)|*.btw";
-
-                // 可选：设置默认过滤器索引
                 openFileDialog.FilterIndex = 1;
-
-                // 可选：是否恢复上次选择的目录
                 openFileDialog.RestoreDirectory = true;
 
-                // 显示对话框并检查用户是否选择了文件
                 if (openFileDialog.ShowDialog() == DialogResult.OK)
                 {
-                    // 获取选择的文件路径
-                    selectedFilePath = openFileDialog.FileName;
-                    Logger.Info($"已选择文件: {selectedFilePath}");
-
-                    // 关闭之前打开的模板
-                    CloseTemplate();
-
-                    // 打开引擎并加载模板
-                    try
+                    string selectedFile = openFileDialog.FileName;
+                    Logger.Info($"用户选择了文件: {selectedFile}");
+                    
+                    // Use the PrintingService to load the template
+                    bool success = await _printingService.LoadTemplateAsync(selectedFile);
+                    if (success)
                     {
-                        engine.Start();
-                        Logger.Debug($"打开模板文件: {selectedFilePath}");
-                        format = engine.Documents.Open(selectedFilePath);
-                        _templateOpened = true;
-                        MessageBox.Show($"模板文件已成功加载: {selectedFilePath}", "文件已加载",
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error(ex, $"打开模板文件失败: {ex.Message}");
-                        MessageBox.Show($"打开模板文件失败: {ex.Message}", "错误",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        _templateOpened = false;
-                    }
-                }
-            }
-        }
-
-        // 添加一个关闭模板的方法
-        private void CloseTemplate()
-        {
-            if (format != null)
-            {
-                try
-                {
-                    // 使用 SaveOptions.DoNotSaveChanges 参数关闭模板
-                    format.Close(Seagull.BarTender.Print.SaveOptions.DoNotSaveChanges);
-                    format = null;
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex, "关闭模板文件失败");
-                }
-            }
-
-            if (engine != null && engine.IsAlive)
-            {
-                try
-                {
-                    engine.Stop();
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex, "停止引擎失败");
-                }
-            }
-
-            _templateOpened = false;
-        }
-
-        // 公共函数：处理TCP服务器启动/停止
-        private async Task<bool> ToggleTcpServerAsync(bool startServer)
-        {
-            try
-            {
-                if (startServer)
-                {
-                    await _tcpServer.StartAsync();
-                    _tcpRunning = true;
-
-                    // 使用Invoke确保UI更新在UI线程上执行
-                    if (btnTcpControl.InvokeRequired)
-                    {
-                        btnTcpControl.Invoke(new Action(() => {
-                            btnTcpControl.Text = "停止TCP";
-                            lblTcpStatus.Text = $"TCP: {_tcpServer.Endpoint}";
-                        }));
+                        MessageBox.Show($"模板文件已成功加载: {selectedFile}", "文件已加载", 
+                                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        OnLogMessage($"模板文件已成功加载: {selectedFile}");
                     }
                     else
                     {
-                        btnTcpControl.Text = "停止TCP";
-                        lblTcpStatus.Text = $"TCP: {_tcpServer.Endpoint}";
+                        // LogMessageRequested and MessageBox for error are handled by PrintingService events
+                        // MessageBox.Show($"打开模板文件失败: {selectedFile}", "错误", 
+                        //                 MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
+                }
+            }
+        }
 
-                    OnLogMessage("TCP服务器已启动");
+private async void btnTcpControl_Click(object sender, EventArgs e)
+        {
+    btnTcpControl.Enabled = false;
+            try
+            {
+        if (!_tcpService.IsRunning)
+                {
+            await _tcpService.StartAsync();
                 }
                 else
                 {
-                    _tcpServer.Stop();
-                    _tcpRunning = false;
-
-                    // 使用Invoke确保UI更新在UI线程上执行
-                    if (btnTcpControl.InvokeRequired)
-                    {
-                        btnTcpControl.Invoke(new Action(() => {
-                            btnTcpControl.Text = "启动TCP";
-                            lblTcpStatus.Text = "TCP: 未启动";
-                        }));
-                    }
-                    else
-                    {
-                        btnTcpControl.Text = "启动TCP";
-                        lblTcpStatus.Text = "TCP: 未启动";
-                    }
-
-                    OnLogMessage("TCP服务器已停止");
+            _tcpService.Stop();
                 }
-                return true;
+        // UI updates are handled by Form1_ServerStatusChanged_Handler
             }
             catch (Exception ex)
             {
-                string operation = startServer ? "启动" : "停止";
-                Logger.Error(ex, $"{operation}TCP服务失败");
-                OnLogMessage($"{operation}TCP服务失败: {ex.Message}");
-
-                // 如果操作失败，确保UI状态与实际状态一致
-                if (startServer)
-                {
-                    _tcpRunning = false;
-
-                    // 使用Invoke确保UI更新在UI线程上执行
-                    if (btnTcpControl.InvokeRequired)
-                    {
-                        btnTcpControl.Invoke(new Action(() => {
-                            btnTcpControl.Text = "启动TCP";
-                            lblTcpStatus.Text = "TCP: 未启动";
-                        }));
-                    }
-                    else
-                    {
-                        btnTcpControl.Text = "启动TCP";
-                        lblTcpStatus.Text = "TCP: 未启动";
-                    }
-                }
-
-                return false;
+        Logger.Error(ex, "TCP 控制按钮操作失败");
+        OnLogMessage($"TCP 控制按钮操作失败: {ex.Message}");
+        // Ensure button text and UI reflects actual state if error occurs
+        // This might require manually calling Form1_ServerStatusChanged_Handler if the event from service isn't guaranteed on error
+        // For now, relying on service's event for status.
+    }
+    finally
+    {
+        btnTcpControl.Enabled = true;
             }
         }
 
-        private async void btnTcpControl_Click(object sender, EventArgs e)
-        {
-            btnTcpControl.Enabled = false;
-
-            await ToggleTcpServerAsync(!_tcpRunning);
-
-            btnTcpControl.Enabled = true;
-        }
-
-        // 修改后的 OnFormClosing 方法，以停止连接保持定时器
+// 修改后的 OnFormClosing 方法
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            if (_modbusKeepAliveTimer != null && _modbusKeepAliveTimer.Enabled)
-            {
-                _modbusKeepAliveTimer.Stop();
-            }
+            // _modbusKeepAliveTimer.Stop(); // Timer is managed by ModbusService
+            _tcpService?.Dispose(); 
+            _printingService?.Dispose(); 
+            _modbusService?.Dispose(); // Dispose the Modbus service
+            // If AppOrchestrator becomes IDisposable, dispose it too.
 
-            if (_tcpRunning)
-            {
-                _tcpServer.Stop();
-            }
-            // 关闭模板和引擎
-            CloseTemplate();
             base.OnFormClosing(e);
         }
 
-        // 修改后的 ConnectModbusAsync 方法，以启动连接保持定时器
-        private async Task ConnectModbusAsync()
+        // ConnectModbusAsync and DisconnectModbus (old direct _modbusClient methods) are removed.
+        // UI updates for Modbus connection are handled by OnModbusConnectionStatusChanged.
+
+        private void OnModbusConnectionStatusChanged(bool isConnected)
         {
-            try
+            if (this.InvokeRequired)
             {
-                _modbusClient.ConnectionTimeout = 5000;  // 5秒超时
-                _modbusClient.Connect();
-
-                _modbusConnected = true;
-                _lastModbusActivity = DateTime.Now;
-                _reconnectAttempts = 0;
-
-                // 启动连接保持定时器
-                if (!_modbusKeepAliveTimer.Enabled)
-                {
-                    _modbusKeepAliveTimer.Start();
-                }
-
-                OnLogMessage("Modbus连接成功");
+                this.Invoke(new Action<bool>(OnModbusConnectionStatusChanged), isConnected);
+                return;
             }
-            catch (Exception ex)
+            btnModbusControl.Text = isConnected ? "断开Modbus" : "连接Modbus";
+            // OnLogMessage($"Modbus Connection Status: {(isConnected ? "Connected" : "Disconnected")}"); // Logged by ModbusService
+            if (!isConnected)
             {
-                _modbusConnected = false;
-                OnLogMessage($"Modbus连接失败: {ex.Message}");
-                Logger.Error(ex, "Modbus连接失败");
+                UpdateWeightDisplay("--.-"); // Clear weight display on disconnect
             }
         }
 
-        // 修改后的 DisconnectModbus 方法，以停止连接保持定时器
-        private void DisconnectModbus()
+        private void Form1_WeightAvailable_Handler(string weight)
         {
-            try
-            {
-                // 停止连接保持定时器
-                if (_modbusKeepAliveTimer.Enabled)
-                {
-                    _modbusKeepAliveTimer.Stop();
-                }
-
-                _modbusClient.Disconnect();
-                _modbusConnected = false;
-
-                OnLogMessage("Modbus已断开");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Modbus断开失败");
-            }
+            UpdateWeightDisplay(weight);
         }
 
         private void label1_Click(object sender, EventArgs e)
@@ -1145,33 +448,32 @@ namespace WindowsFormsApp1
 
 
 
-        private void btnModbusControl_Click_1(object sender, EventArgs e)
+        private async void btnModbusControl_Click_1(object sender, EventArgs e)
         {
             btnModbusControl.Enabled = false;
-
-            if (!_modbusConnected)
+            try
             {
-                try
+                if (!_modbusService.IsConnected)
                 {
-                    ConnectModbusAsync().Wait();
-                    btnModbusControl.Text = "断开Modbus";
+                    await _modbusService.ConnectAsync();
                 }
-                catch (Exception ex)
+                else
                 {
-                    Logger.Error(ex, "Modbus连接失败");
-                    MessageBox.Show($"Modbus连接失败: {ex.Message}", "错误",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-
+                    _modbusService.Disconnect();
                 }
+                // UI update is handled by OnModbusConnectionStatusChanged
             }
-            else
+            catch (Exception ex) // Should be rare if ModbusService handles its own exceptions
             {
-                DisconnectModbus();
-                btnModbusControl.Text = "连接Modbus";
-
+                Logger.Error(ex, "Modbus 控制按钮操作失败");
+                OnLogMessage($"Modbus 控制按钮操作失败: {ex.Message}");
+                // Ensure button text reflects actual state if error occurs
+                OnModbusConnectionStatusChanged(_modbusService.IsConnected); 
             }
-            btnModbusControl.Enabled = true;
-
+            finally
+            {
+                btnModbusControl.Enabled = true;
+            }
         }
 
         /// <summary>
@@ -1196,56 +498,5 @@ namespace WindowsFormsApp1
             // 如果匹配失败，返回失败原因
             return matchResult.FailureReason;
         }
-
-        public string GenerateTraceabilityCode()
-        {
-            // Get current date
-            DateTime currentDate = DateTime.Now;
-
-            // 1. First character: Factory code (fixed as 'N')
-            char factoryCode = 'N';
-
-            // 2. Second character: First digit of the day
-            int dayFirstDigit = currentDate.Day / 10;
-            char[] dayFirstDigitMap = { 'A', 'B', 'C', 'D' }; // 0:A, 1:B, 2:C, 3:D
-            char mappedDayFirstDigit = dayFirstDigitMap[dayFirstDigit];
-
-            // 3. Third character: Last digit of the day
-            int dayLastDigit = currentDate.Day % 10;
-            char mappedDayLastDigit = (char)('A' + dayLastDigit); // 0:A, 1:B, ..., 9:J
-
-            // 4. Fourth character: Years of factory operation
-            int yearsOfOperation = currentDate.Year - factoryStartDate.Year;
-            if (currentDate < factoryStartDate.AddYears(yearsOfOperation))
-            {
-                yearsOfOperation--; // Adjust if we haven't reached the anniversary date yet
-            }
-            // Ensure the value is between 1 and 10
-            yearsOfOperation = Math.Max(1, Math.Min(10, yearsOfOperation));
-            char mappedYearsOfOperation = (char)('A' + (yearsOfOperation - 1)); // 1:A, 2:B, ..., 10:J
-
-            // 5. Fifth character: Month of production date
-            int month = currentDate.Month;
-            char mappedMonth = (char)('A' + (month - 1)); // 1:A, 2:B, ..., 12:L
-
-            // Combine all characters to form the traceability code
-            string traceabilityCode = new string(new[] {
-                factoryCode,
-                mappedDayFirstDigit,
-                mappedDayLastDigit,
-                mappedYearsOfOperation,
-                mappedMonth
-            });
-
-            return traceabilityCode;
-        }
-    }
-
-    public class PrintTemplate
-    {
-        public string key { get; set; }
-        public string productName { get; set; }
-        public string spec { get; set; }
-        public string qrcode { get; set; }
     }
 }
