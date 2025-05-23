@@ -186,7 +186,7 @@ namespace WindowsFormsApp1
                 if (tpl != null)
                 {
                     string traceabilityCode = TraceabilityCodeGenerator.GenerateTraceabilityCode();
-                    string qrCodeToUse = overrideQrCode ?? tpl.qrcode;
+                    string qrCodeToUse = qrOverride ?? tpl.qrcode;
 
                     PrintJobData jobData = new PrintJobData
                     {
